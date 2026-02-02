@@ -421,39 +421,37 @@ model client_lifecycle_log {
   changed_at DateTime? @default(now()) @db.Timestamptz(6)
   changed_by String?   @db.Uuid
   users      users?    @relation(fields: [changed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  clients    clients   @relation(fields: [client_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("public")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model clients {
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at           DateTime?              @default(now()) @db.Timestamptz(6)
-  name                 String
-  rfc                  String?
-  contact_email        String?
-  current_stage        String?                @default("PROSPECTO")
-  address              String?
-  city                 String?
-  state                String?
-  zip_code             String?
-  is_american_date     Boolean?               @default(false)
-  payment_method       String?
-  credit_days          Int?                   @default(0)
-  discount_rate        Decimal?               @default(0) @db.Decimal
-  
-  // ✅ DEJA ESTA LÍNEA (la que ya detectó Supabase)
-  is_active            Boolean?               @default(true)
-  
-  client_lifecycle_log client_lifecycle_log[]
-  quotes               quotes[]
-  service_orders       service_orders[]
+  id                    BigInt                 @id
+  empresa               String?
+  domicilio             String?
+  municipio             String?
+  estado                String?
+  codigo_postal         String?
+  rfc                   String?
+  regimen_fiscal        String?
+  forma_de_pago         String?
+  dias_de_credito       Decimal?               @db.Decimal
+  cliente_con_descuento Decimal?               @db.Decimal
+  estatus               String?
+  tipoFecha             String?
+  updated_by            String?                @db.Uuid
+  updated_at            DateTime?              @db.Timestamptz(6)
+  created_by            String?                @db.Uuid
+  created_date          DateTime?              @db.Timestamptz(6)
+  is_active             Boolean?               @default(true)
+  contacts              contacts[]
+  quote_items           quote_items[]
+  quotes                quotes[]
+  service_orders        service_orders[]
+  subcontract_services  subcontract_services[]
 
   @@schema("public")
-  
-  // ❌ BORRA ESTA LÍNEA DE ABAJO (la duplicada)
-  // is_active Boolean  @default(true) 
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -474,40 +472,326 @@ model profiles {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model quotes {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at     DateTime?        @default(now()) @db.Timestamptz(6)
-  quote_number   Int              @default(autoincrement())
-  client_id      String?          @db.Uuid
-  origin         String?          @default("CRM")
-  status         String?          @default("PENDIENTE")
-  total_amount   Decimal?         @db.Decimal
-  clients        clients?         @relation(fields: [client_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  service_orders service_orders[]
+  id                      BigInt    @id @default(autoincrement())
+  client_id               BigInt?
+  contact_id              BigInt?
+  user_id                 BigInt?
+  fecha                   String?
+  folio_numero            Decimal?  @db.Decimal
+  anio                    Int?
+  folio                   String?
+  moneda                  String?
+  tiempo_de_entrega       Int?
+  condicion_de_pago       Int?
+  vigencia                Int?
+  lab                     String?
+  fecha_emision           String?
+  no_revision             Int?
+  fecha_de_revision       String?
+  edicion                 Int?
+  folio_orden_de_servicio String?
+  subtotal                Decimal?  @db.Decimal
+  iva                     Decimal?  @db.Decimal
+  iva_porcentaje          Decimal?  @db.Decimal
+  total                   Decimal?  @db.Decimal
+  estatus                 String?
+  autorizo                String?
+  updated_by              String?   @db.Uuid
+  updated_at              String?
+  created_by              String?
+  phone_by                String?
+  mail_by                 String?
+  created_date            String?
+  clients                 clients?  @relation(fields: [client_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contacts                contacts? @relation(fields: [contact_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
 
 model service_items {
-  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id       String?         @db.Uuid
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id       String? @db.Uuid
   equipment_name String?
-  status         String?         @default("RECIBIDO")
-  service_orders service_orders? @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status         String? @default("RECIBIDO")
 
   @@schema("public")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model service_orders {
-  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at    DateTime?       @default(now()) @db.Timestamptz(6)
-  folio         String
-  client_id     String?         @db.Uuid
-  quote_id      String?         @db.Uuid
-  status        String?         @default("ACTIVA")
-  service_items service_items[]
-  clients       clients?        @relation(fields: [client_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  quotes        quotes?         @relation(fields: [quote_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    BigInt   @id
+  num_consecutivo       String?
+  tipo_orden            String?
+  user_id               BigInt?
+  metrologo             String?
+  cotizacion_id         BigInt?
+  client_id             BigInt?
+  contact_id            BigInt?
+  folio                 String?
+  no_orden_de_servicio  String?
+  fecha_recepcion       String?
+  fecha_programada      String?
+  fecha_estimada        String?
+  registro              String?
+  guia                  String?
+  medio_recepcion       String?
+  entrego               String?
+  recibo                String?
+  comentarios           String?
+  no_factura            String?
+  subtotal              Decimal? @db.Decimal
+  iva                   Decimal? @db.Decimal
+  iva_porcentaje        Decimal? @db.Decimal
+  total                 Decimal? @db.Decimal
+  orden_de_compra       String?
+  fecha_de_pago_factura String?
+  updated_by            String?
+  updated_at            String?
+  created_by            String?
+  created_date          String?
+  clients               clients? @relation(fields: [client_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model acreditaciones {
+  id         BigInt  @id
+  nombre     String?
+  imagen     String?
+  acreditado String?
+  cratedDate String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model calibraciones {
+  id                BigInt  @id
+  cliente_id        BigInt?
+  producto_id       BigInt?
+  os                String?
+  informe           String?
+  tipo              String?
+  instrumento       String?
+  marca             String?
+  modelo            String?
+  marcamodelo       String?
+  serie             String?
+  identificacion    String?
+  fecha_calibracion String?
+  fecha_emicion     String?
+  fecha_vigencia    String?
+  fecha_recepcion   String?
+  date              String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model catalogo_selects {
+  id           BigInt  @id
+  campo        String?
+  nombre       String?
+  valor        String?
+  updated_by   String?
+  updated_at   String?
+  created_by   String?
+  created_date String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model contacts {
+  id                   BigInt                 @id @default(autoincrement())
+  client_id            BigInt?
+  nombre               String?
+  telefono             String?
+  correo               String?
+  updated_by           String?                @db.Uuid
+  updated_at           DateTime?              @db.Timestamptz(6)
+  created_by           String?
+  created_date         DateTime?              @db.Timestamptz(6)
+  clients              clients?               @relation(fields: [client_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quotes               quotes[]
+  subcontract_services subcontract_services[]
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model incertidumbres {
+  id            BigInt   @id
+  tipo          String?
+  patron        Decimal? @db.Decimal
+  incertidumbre Decimal? @db.Decimal
+  createDate    String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model mediciones {
+  id             BigInt   @id
+  id_prod_orden  BigInt?
+  tipo           String?
+  no_certificado String?
+  resolucion     Decimal? @db.Decimal
+  unidad         String?
+  valor          Decimal? @db.Decimal
+  toma1          Decimal? @db.Decimal
+  toma2          Decimal? @db.Decimal
+  toma3          Decimal? @db.Decimal
+  toma4          Decimal? @db.Decimal
+  toma5          Decimal? @db.Decimal
+  incertidumbre  Decimal? @db.Decimal
+  error          Decimal? @db.Decimal
+  errorU         Decimal? @db.Decimal
+  errorUp        Decimal? @db.Decimal
+  CreatedDate    String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model mediciones_config {
+  id             BigInt  @id
+  no_certificado String?
+  logo           String?
+  valor          String?
+  CreatedDate    String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model products {
+  id             BigInt   @id @default(autoincrement())
+  categoria      String?
+  equipo         String?
+  marca          String?
+  modelo         String?
+  no_serie       String?
+  identificacion String?
+  acreditado     String?
+  precio         Decimal? @db.Decimal
+  precio1        Decimal? @db.Decimal
+  precio2        Decimal? @db.Decimal
+  precio3        Decimal? @db.Decimal
+  created_date   String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model quote_items {
+  id                BigInt   @id @default(autoincrement())
+  cotizacion_id     BigInt?
+  client_id         BigInt?
+  producto_id       BigInt?
+  equipo            String?
+  marca             String?
+  modelo            String?
+  no_serie          String?
+  acreditado        String?
+  identificacion    String?
+  precio_unitario   Decimal? @db.Decimal
+  importe           Decimal? @db.Decimal
+  created_date      String?
+  updated_at        String?
+  fecha             String?
+  cantidad          Int?
+  categoria         String?
+  servicio          String?
+  vigencia          String?
+  no_certificado    String?
+  observaciones     String?
+  fecha_calibracion String?
+  fecha_de_emision  String?
+  fecha_vigencia    String?
+  precio_descuento  Decimal? @db.Decimal
+  updated_by        String?  @db.Uuid
+  created_by        String?
+  ideCons           String?
+  clients           clients? @relation(fields: [client_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model service_order_items {
+  id                BigInt   @id
+  orden_id          BigInt?
+  client_id         BigInt?
+  producto_id       BigInt?
+  fecha             String?
+  cantidad          Int?
+  categoria         String?
+  equipo            String?
+  marca             String?
+  modelo            String?
+  no_serie          String?
+  acreditado        String?
+  identificacion    String?
+  servicio          String?
+  precio_unitario   Decimal? @db.Decimal
+  importe           Decimal? @db.Decimal
+  vigencia          String?
+  no_certificado    String?
+  ideCons           String?
+  observaciones     String?
+  fecha_calibracion String?
+  fecha_de_emision  String?
+  fecha_vigencia    String?
+  precio_descuento  Decimal? @db.Decimal
+  updated_by        String?
+  updated_at        String?
+  created_by        String?
+  created_date      String?
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model subcontract_items {
+  id                   BigInt                @id @default(autoincrement())
+  subcontract_id       BigInt?
+  cantidad             Int?                  @default(1)
+  servicio             String?               @default("CALIBRACION")
+  equipo               String?
+  marca                String?
+  modelo               String?
+  no_serie             String?
+  identificacion       String?
+  acreditado           String?
+  precio_unitario      Decimal?              @db.Decimal(10, 2)
+  importe              Decimal?              @db.Decimal(10, 2)
+  created_at           DateTime?             @default(now()) @db.Timestamptz(6)
+  subcontract_services subcontract_services? @relation(fields: [subcontract_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model subcontract_services {
+  id                   BigInt              @id @default(autoincrement())
+  client_id            BigInt?
+  contact_id           BigInt?
+  folio                String
+  cotizacion_origen_id BigInt?
+  fecha                DateTime?           @default(now()) @db.Timestamptz(6)
+  estatus              String?             @default("Borrador")
+  moneda               String?             @default("PESOS")
+  tiempo_de_entrega    Int?                @default(5)
+  condicion_de_pago    Int?                @default(30)
+  vigencia             Int?                @default(15)
+  lab                  String?             @default("METKAL")
+  created_by           String?             @default("Sistema")
+  created_at           DateTime?           @default(now()) @db.Timestamptz(6)
+  subcontract_items    subcontract_items[]
+  clients              clients?            @relation(fields: [client_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contacts             contacts?           @relation(fields: [contact_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
