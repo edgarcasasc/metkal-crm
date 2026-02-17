@@ -1,7 +1,7 @@
 'use client' // 👈 Importante: Esto lo convierte en componente interactivo
 
 import { useState } from 'react';
-import { updateClient, deleteClient } from '@/app/actions/client-actions';
+import { updateClient, deleteClient } from '@/actions/client-actions';
 
 interface ClientProps {
   id: string;

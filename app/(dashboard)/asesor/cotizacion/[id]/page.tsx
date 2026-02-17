@@ -5,10 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { 
     Printer, ArrowLeft, Loader2, Package, Save, Trash2, AlertCircle, 
-    Send, CheckCircle, Lock // Agregamos el icono de Candado
+    Send, CheckCircle, Lock, PlayCircle 
 } from 'lucide-react'
 
-// IMPORTAMOS EL COMPONENTE NUEVO
 import { AddProductModal } from '@/components/AddProductModal'
 
 export default function QuotePrintPage() {
@@ -20,8 +19,10 @@ export default function QuotePrintPage() {
   const [items, setItems] = useState<any[]>([]) 
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  
+  // Nuevo estado para saber si ya se mandó a metrología
+  const [hasOrder, setHasOrder] = useState(false)
 
-  // Solo necesitamos saber si el modal está abierto o cerrado
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
 
   useEffect(() => { fetchQuoteData() }, [id])
@@ -41,6 +42,7 @@ export default function QuotePrintPage() {
         }
         setData({ ...quote, client, contact })
 
+        // Cargar Items
         const { data: qItems, error: itemsError } = await supabase
             .from('quote_items')
             .select('*')
@@ -50,30 +52,103 @@ export default function QuotePrintPage() {
         if (itemsError) throw itemsError
         setItems(qItems || [])
 
+        // VERIFICAR SI YA EXISTE ORDEN (Para no duplicar)
+        const { data: existingOrder } = await supabase
+            .from('service_orders')
+            .select('id')
+            .eq('cotizacion_id', quote.id)
+            .maybeSingle()
+        
+        if (existingOrder) setHasOrder(true)
+
       } catch (err: any) { setErrorMsg(err.message) } finally { setLoading(false) }
   }
 
-  // --- LÓGICA DE ESTATUS Y REDIRECCIÓN ---
-  const handleUpdateStatus = async (newStatus: string, confirmMessage: string) => {
-      if (!confirm(confirmMessage)) return
-      try {
-          const { error } = await supabase.from('quotes').update({ estatus: newStatus }).eq('id', id)
-          if (error) throw error
-          
-          setData({ ...data, estatus: newStatus })
-          
-          if (newStatus === 'En Revisión') {
-              alert("¡Listo! La cotización ha sido enviada a revisión.")
-          } else if (newStatus === 'Aprobada') {
-              alert("¡Excelente! Se ha generado la Orden de Servicio.")
-          } else {
-              alert(`Estatus actualizado a: ${newStatus}`)
-          }
+  // --- ACCIÓN: MANDAR A METROLOGÍA (CREAR ORDEN) ---
+  // --- ACCIÓN: MANDAR A METROLOGÍA (CREAR ORDEN) ---
+  const handleCreateOrder = async () => {
+      if (!confirm("¿Confirmar creación de Orden de Servicio? Se enviará inmediatamente al tablero de Metrología.")) return
+      setLoading(true)
 
-      } catch (error: any) { alert("Error: " + error.message) }
+      try {
+          // 1. Generar Folio Único (OS-MK-YY/XXXX)
+          const year = new Date().getFullYear().toString().slice(-2)
+          const { count } = await supabase.from('service_orders').select('*', { count: 'exact', head: true })
+          const nextNum = (count || 0) + 1
+          const folio = `OS-MK-${year}/${nextNum.toString().padStart(4, '0')}`
+
+          // 2. Insertar Cabecera de la Orden
+          const { data: orderData, error: orderError } = await supabase.from('service_orders').insert({
+              cotizacion_id: Number(id),
+              client_id: data.client_id,
+              contact_id: data.contact_id,
+              folio: folio,
+              fecha_programada: new Date().toISOString(),
+              estatus: 'En Proceso', 
+              tipo_orden: 'Laboratorio', 
+              metrologo: null 
+          }).select().single()
+
+          if (orderError) throw orderError
+
+          // 3. Insertar Partidas CON DETECCIÓN DE MAGNITUD
+          const orderItems = items.map(item => {
+              // --- DETECCIÓN AUTOMÁTICA DE MAGNITUD ---
+              let magnitudDetectada = item.categoria || 'Generica'
+              const nombre = (item.equipo || '').toLowerCase()
+              
+              if (nombre.includes('vernier') || nombre.includes('caliper') || nombre.includes('pie de rey') || nombre.includes('micrometro') || nombre.includes('indicador')) {
+                  magnitudDetectada = 'Dimensional'
+              } else if (nombre.includes('manometro') || nombre.includes('presion') || nombre.includes('vacuo')) {
+                  magnitudDetectada = 'Presion'
+              } else if (nombre.includes('termometro') || nombre.includes('temperatura') || nombre.includes('pirometro')) {
+                  magnitudDetectada = 'Temperatura'
+              }
+              // ----------------------------------------
+
+              return {
+                  orden_id: orderData.id,
+                  equipo: item.equipo,
+                  marca: item.marca,
+                  modelo: item.modelo,
+                  no_serie: item.no_serie,
+                  identificacion: item.identificacion,
+                  servicio: item.servicio,
+                  magnitud: magnitudDetectada, // ✅ ¡ESTO ES LO QUE FALTABA!
+                  estatus_tecnico: 'Pendiente'
+              }
+          })
+
+          const { error: itemsError } = await supabase.from('service_order_items').insert(orderItems)
+          if (itemsError) throw itemsError
+
+          // 4. Actualizar estatus de la Cotización para cerrar el ciclo
+          await supabase.from('quotes').update({ estatus: 'Orden Generada' }).eq('id', id)
+          
+          alert(`¡Éxito! Orden ${folio} creada y enviada a Metrología.`)
+          setHasOrder(true) 
+          // Opcional: Redirigir al dashboard
+          // router.push('/metrologia') 
+
+      } catch (error: any) {
+          alert("Error creando orden: " + error.message)
+      } finally {
+          setLoading(false)
+      }
   }
 
-  // --- OPERACIONES CON ITEMS ---
+  // --- CAMBIAR ESTATUS (SOLO PARA ENVIAR A REVISIÓN) ---
+  const handleSendToReview = async () => {
+      if (!confirm("¿Enviar a revisión?")) return
+      try {
+          const { error } = await supabase.from('quotes').update({ estatus: 'En Revisión' }).eq('id', id)
+          if (error) throw error
+          setData({ ...data, estatus: 'En Revisión' })
+          alert("Enviado a revisión correctamente.")
+      } catch (e: any) { alert(e.message) }
+  }
+
+  // --- OPERACIONES CRUD ITEMS ---
   const handleUpdateQuantity = async (itemId: number, newQty: number, unitPrice: number) => {
       if (newQty < 1) return
       const updatedItems = items.map(item => item.id === itemId ? { ...item, cantidad: newQty, importe: newQty * unitPrice } : item)
@@ -90,34 +165,27 @@ export default function QuotePrintPage() {
   const handleAddProduct = async (product: any) => {
       const newItem = {
           cotizacion_id: Number(id),
-          equipo: product.equipo, 
-          marca: product.marca, 
-          modelo: product.modelo, 
-          no_serie: product.no_serie, 
-          identificacion: product.identificacion, 
-          acreditado: product.acreditado,
-          servicio: 'CALIBRACION', 
-          categoria: product.categoria,
-          cantidad: 1, 
-          precio_unitario: product.precio, 
-          importe: product.precio
+          equipo: product.equipo, marca: product.marca, modelo: product.modelo, 
+          no_serie: product.no_serie, identificacion: product.identificacion, 
+          acreditado: product.acreditado, servicio: 'CALIBRACION', categoria: product.categoria,
+          cantidad: 1, precio_unitario: product.precio, importe: product.precio
       }
       await supabase.from('quote_items').insert(newItem)
       fetchQuoteData()
   }
 
-  // Cálculos Totales
+  // Cálculos
   const subtotal = items.reduce((sum, item) => sum + (Number(item.importe) || 0), 0)
   const iva = subtotal * 0.16
   const total = subtotal + iva
   const handlePrint = () => window.print()
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-slate-400 font-bold uppercase gap-2"><Loader2 className="animate-spin"/> Cargando documento...</div>
+  if (loading) return <div className="flex h-screen items-center justify-center text-slate-400 font-bold uppercase gap-2"><Loader2 className="animate-spin"/> Cargando...</div>
   if (errorMsg || !data) return <div className="flex h-screen items-center justify-center text-red-500 gap-2"><AlertCircle/> {errorMsg}</div>
 
-  // --- VARIABLE PARA SABER SI ESTÁ BLOQUEADA ---
-  // Si NO es 'Borrador' (es decir, es 'En Revisión' o 'Aprobada'), consideramos que está bloqueada
-  const isReadOnly = data?.estatus && data?.estatus !== 'Borrador';
+  const isBorrador = data?.estatus === 'Borrador';
+  const isAprobada = data?.estatus === 'Aprobada';
+  const isEnRevision = data?.estatus === 'En Revisión';
 
   return (
     <div className="min-h-screen bg-slate-200 p-8 print:p-0 print:bg-white font-sans text-slate-800">
@@ -128,56 +196,70 @@ export default function QuotePrintPage() {
             <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-bold uppercase text-xs transition bg-white px-4 py-2 rounded-lg shadow-sm"><ArrowLeft size={16} /> Volver</button>
             <div className="flex gap-2">
                 
-                {/* BOTÓN ENVIAR A APROBACIÓN (INTELIGENTE) */}
-                <button 
-                    onClick={() => handleUpdateStatus('En Revisión', '¿Enviar esta cotización a revisión? El asesor perderá permisos de edición hasta que sea rechazada.')}
-                    disabled={isReadOnly} // SE DESACTIVA SI YA NO ES BORRADOR
-                    className={`
-                        flex items-center gap-2 px-4 py-2 rounded-full font-bold uppercase text-xs transition shadow-lg
-                        ${isReadOnly 
-                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed' // Estilo Desactivado
-                            : 'bg-amber-500 text-white hover:bg-amber-600' // Estilo Activo
-                        }
-                    `}
-                >
-                    {isReadOnly ? (
-                        <><Lock size={16} /> En Revisión</>
-                    ) : (
-                        <><Send size={16} /> Enviar a Aprobación</>
-                    )}
-                </button>
+                {/* BOTÓN 1: ENVIAR A REVISIÓN (Solo si es borrador) */}
+                {isBorrador && (
+                    <button 
+                        onClick={handleSendToReview}
+                        className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-full font-bold uppercase text-xs hover:bg-amber-600 transition shadow-lg"
+                    >
+                        <Send size={16} /> Enviar a Revisión
+                    </button>
+                )}
 
-                {/* BOTÓN CREAR ORDEN (Solo habilitado si está aprobada o lista) */}
-                <button 
-                    onClick={() => handleUpdateStatus('Aprobada', '¿Crear Orden de Servicio?')} 
-                    // Opcional: También podrías desactivar este si ya está aprobada
-                    className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-full font-bold uppercase text-xs hover:bg-emerald-700 transition shadow-lg"
-                >
-                    <CheckCircle size={16} /> Crear Orden
-                </button>
+                {/* BOTÓN 2: EN REVISIÓN (Informativo y bloqueado) */}
+                {isEnRevision && (
+                    <button disabled className="flex items-center gap-2 bg-slate-300 text-slate-500 px-4 py-2 rounded-full font-bold uppercase text-xs cursor-not-allowed">
+                        <Lock size={16} /> En Revisión por Gerencia
+                    </button>
+                )}
+
+                {/* BOTÓN 3: CREAR ORDEN (El que pediste) */}
+                {/* Lógica: Si está Aprobada Y no tiene orden -> VERDE (Activo) */}
+                {/* Lógica: Si NO está Aprobada -> GRIS (Desactivado) */}
+                {/* Lógica: Si YA tiene orden -> AZUL (Informativo) */}
+                
+                {!hasOrder ? (
+                    <button 
+                        onClick={handleCreateOrder} 
+                        disabled={!isAprobada} // SE DESACTIVA SI NO ESTA APROBADA
+                        className={`
+                            flex items-center gap-2 px-4 py-2 rounded-full font-bold uppercase text-xs transition shadow-lg
+                            ${isAprobada 
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse' // ACTIVO
+                                : 'bg-slate-300 text-slate-400 cursor-not-allowed' // DESACTIVADO
+                            }
+                        `}
+                        title={isAprobada ? "¡Lista para procesar! Clic para enviar a Metrología" : "Esperando aprobación de gerencia..."}
+                    >
+                        {isAprobada ? <PlayCircle size={16}/> : <Lock size={16}/>}
+                        {isAprobada ? "Crear Orden / Enviar a Metrología" : "Esperando Aprobación"}
+                    </button>
+                ) : (
+                    <button disabled className="flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full font-bold uppercase text-xs border border-blue-200">
+                        <CheckCircle size={16} /> Orden Enviada
+                    </button>
+                )}
 
                 <button onClick={handlePrint} className="flex items-center gap-2 bg-slate-800 text-white px-6 py-2 rounded-full font-bold uppercase text-xs hover:bg-slate-900 transition shadow-lg"><Printer size={16} /> Imprimir</button>
             </div>
         </div>
-        <div className="flex justify-end">
-            <button 
-                onClick={() => setIsProductModalOpen(true)} 
-                disabled={isReadOnly} // También bloqueamos agregar productos si está en revisión
-                className={`
-                    flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition shadow-lg
-                    ${isReadOnly 
-                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
-                        : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'
-                    }
-                `}
-            >
-                <Package size={18} /> Agregar Producto
-            </button>
-        </div>
+        
+        {/* AGREGAR PRODUCTO (Solo en Borrador) */}
+        {isBorrador && (
+            <div className="flex justify-end">
+                <button 
+                    onClick={() => setIsProductModalOpen(true)} 
+                    className="flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition shadow-lg bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
+                >
+                    <Package size={18} /> Agregar Producto
+                </button>
+            </div>
+        )}
       </div>
 
       <div id="printable-area" className="max-w-[21.5cm] mx-auto bg-white shadow-2xl print:shadow-none min-h-[27.9cm] p-12 relative text-[10px] leading-relaxed">
         
+        {/* ENCABEZADO Y DATOS (Sin cambios) */}
         <div className="flex justify-between items-end border-b-2 border-slate-800 pb-6 mb-6">
             <div className="w-1/2">
                 <div className="mb-3"><img src="/Logo-Horizontal-Color.png" alt="METKAL" className="h-16 w-auto object-contain"/></div>
@@ -216,6 +298,7 @@ export default function QuotePrintPage() {
             </div>
         </div>
 
+        {/* TABLA ITEMS */}
         <div className="mb-8 min-h-[300px]">
             <table className="w-full text-left border-collapse">
                 <thead>
@@ -236,11 +319,11 @@ export default function QuotePrintPage() {
                         <tr key={index} className="border-b border-slate-200 hover:bg-slate-50 transition-colors group">
                             <td className="py-2 px-2 text-center font-bold text-slate-400">{index + 1}</td>
                             <td className="py-2 px-2 text-center font-bold">
-                                {/* Si está bloqueado, mostramos texto estático, si no, el input */}
-                                {isReadOnly ? (
-                                    <span>{item.cantidad}</span>
-                                ) : (
+                                {/* Solo editable si es Borrador */}
+                                {isBorrador ? (
                                     <input type="number" value={item.cantidad || 1} min="1" onChange={(e) => handleUpdateQuantity(item.id, Number(e.target.value), item.precio_unitario)} className="w-12 text-center bg-transparent outline-none print:w-auto"/>
+                                ) : (
+                                    <span>{item.cantidad}</span>
                                 )}
                             </td>
                             <td className="py-2 px-2 uppercase text-slate-500 font-mono text-[9px]">{item.categoria || 'S/C'}</td>
@@ -254,7 +337,7 @@ export default function QuotePrintPage() {
                             <td className="py-2 px-2 text-right font-mono text-slate-600">${(Number(item.precio_unitario) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                             <td className="py-2 px-2 text-right font-mono font-bold text-slate-800">${(Number(item.importe) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                             <td className="py-2 px-2 text-center print:hidden">
-                                {!isReadOnly && (
+                                {isBorrador && (
                                     <button onClick={() => handleDeleteItem(item.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
                                 )}
                             </td>
@@ -264,6 +347,7 @@ export default function QuotePrintPage() {
             </table>
         </div>
 
+        {/* TOTALES */}
         <div className="flex justify-end mb-16">
             <div className="w-56">
                 <div className="flex justify-between py-1 px-2 border-b border-slate-200 text-slate-600"><span className="font-bold text-[10px]">SUBTOTAL:</span><span className="font-mono text-slate-800">${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></div>
@@ -273,6 +357,7 @@ export default function QuotePrintPage() {
             </div>
         </div>
 
+        {/* FIRMAS */}
         <div className="absolute bottom-12 left-12 right-12">
             <div className="flex justify-center gap-32 text-center">
                 <div className="flex flex-col items-center">
@@ -285,15 +370,18 @@ export default function QuotePrintPage() {
                     </div>
                 </div>
                 
-                <div className="flex flex-col items-center">
-                    <div className="h-24 w-24 bg-white border border-slate-200 mb-2 flex items-center justify-center p-1">
-                        <img src="/SergioGArza.png" alt="Firma" className="w-full h-full object-contain" />
+                {/* Firma de Autorización (Solo visible si está Aprobada) */}
+                {isAprobada && (
+                    <div className="flex flex-col items-center">
+                        <div className="h-24 w-24 bg-white border border-slate-200 mb-2 flex items-center justify-center p-1">
+                            <img src="/SergioGArza.png" alt="Firma" className="w-full h-full object-contain" />
+                        </div>
+                        <div className="border-t border-slate-400 w-full pt-2">
+                            <p className="font-bold uppercase text-[9px] text-slate-700">Sergio Garza</p>
+                            <p className="text-[8px] text-slate-400 uppercase font-bold">Autorizó</p>
+                        </div>
                     </div>
-                    <div className="border-t border-slate-400 w-full pt-2">
-                        <p className="font-bold uppercase text-[9px] text-slate-700">Sergio Garza</p>
-                        <p className="text-[8px] text-slate-400 uppercase font-bold">Autorizó</p>
-                    </div>
-                </div>
+                )}
             </div>
         </div>
       </div>

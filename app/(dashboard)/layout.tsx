@@ -1,10 +1,11 @@
-import { DesktopSidebar, MobileNavbar } from "@/components/sidebar"
-import type { Metadata } from "next";
+import Sidebar from "@/components/sidebar" // SIN LLAVES {} porque es export default
+import { MobileNavbar } from "@/components/mobile-navbar" // CON LLAVES {} porque es export const
+import type { Metadata } from "next"
 
 export const metadata: Metadata = {
   title: "METKAL Dashboard",
-  description: "Sistema de gestión de cotizaciones y servicios",
-};
+  description: "Sistema de gestión de metrología",
+}
 
 export default function DashboardLayout({
   children,
@@ -12,22 +13,21 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="h-full relative bg-slate-50">
+    <div className="h-full relative">
       
-      {/* 1. Navbar Móvil (Visible solo en celular < md) */}
-      <MobileNavbar />
+      {/* 1. Navbar Móvil */}
+      <div className="md:hidden">
+          <MobileNavbar />
+      </div>
 
-      {/* 2. Sidebar Escritorio (Visible solo en escritorio >= md) */}
+      {/* 2. Sidebar Escritorio */}
       <div className="hidden h-full md:flex md:w-72 md:flex-col md:fixed md:inset-y-0 z-[80]">
-        <DesktopSidebar />
+        <Sidebar />
       </div>
 
       {/* 3. Contenido Principal */}
-      <main className="md:pl-72 h-full">
-        {/* Eliminamos el padding fijo aquí para controlarlo en cada página */}
-        <div className="h-full">
-            {children}
-        </div>
+      <main className="md:pl-72 pt-[60px] md:pt-0 h-full">
+        {children}
       </main>
     </div>
   )

@@ -14,6 +14,7 @@ export default function ApprovalPage() {
   const [quotes, setQuotes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [processingId, setProcessingId] = useState<number | null>(null) // Para evitar doble clic
 
   useEffect(() => {
     fetchPendingQuotes()
@@ -22,7 +23,7 @@ export default function ApprovalPage() {
   async function fetchPendingQuotes() {
     setLoading(true)
     try {
-      // Traemos cotizaciones en estatus 'En Revisión' y unimos con clientes
+      // Traemos cotizaciones en estatus 'En Revisión'
       const { data, error } = await supabase
         .from('quotes')
         .select(`
@@ -41,32 +42,96 @@ export default function ApprovalPage() {
     }
   }
 
-  const handleAction = async (quoteId: number, action: 'Aprobar' | 'Rechazar') => {
-      const newStatus = action === 'Aprobar' ? 'Aprobada' : 'Borrador'
-      const confirmMsg = action === 'Aprobar' 
-        ? "¿Aprobar esta cotización y generar Orden de Servicio?" 
-        : "¿Rechazar y devolver a Borrador?"
-
-      if (!confirm(confirmMsg)) return
+  // --- LÓGICA CORE: APROBAR Y CREAR ORDEN ---
+  const handleApprove = async (quote: any) => {
+      if (!confirm("¿Aprobar esta cotización? Se generará automáticamente la Orden de Servicio para Metrología.")) return
+      
+      setProcessingId(quote.id)
 
       try {
-          const { error } = await supabase
-            .from('quotes')
-            .update({ estatus: newStatus })
-            .eq('id', quoteId)
-
-          if (error) throw error
+          // 1. Obtener los productos de esta cotización
+          const { data: quoteItems, error: itemsError } = await supabase
+              .from('quote_items')
+              .select('*')
+              .eq('cotizacion_id', quote.id)
           
-          // Actualizar lista visualmente
-          setQuotes(prev => prev.filter(q => q.id !== quoteId))
-          alert(`Cotización ${newStatus} exitosamente.`)
+          if (itemsError) throw itemsError
+          if (!quoteItems || quoteItems.length === 0) throw new Error("La cotización no tiene productos.")
+
+          // 2. Generar Folio de Orden (OS-MK-YY/XXXX)
+          const year = new Date().getFullYear().toString().slice(-2)
+          const { count } = await supabase.from('service_orders').select('*', { count: 'exact', head: true })
+          const nextNum = (count || 0) + 1
+          const folioOrden = `OS-MK-${year}/${nextNum.toString().padStart(4, '0')}`
+
+          // 3. Crear la Orden de Servicio (Cabecera)
+          const { data: orderData, error: orderError } = await supabase.from('service_orders').insert({
+              cotizacion_id: quote.id,
+              client_id: quote.client_id,
+              contact_id: quote.contact_id,
+              folio: folioOrden,
+              fecha_programada: new Date().toISOString(), // Fecha hoy
+              estatus: 'En Proceso', // IMPORTANTE: Para que salga en el dashboard del metrólogo
+              tipo_orden: 'Laboratorio', 
+              metrologo: null 
+          }).select().single()
+
+          if (orderError) throw orderError
+
+          // 4. Mover los items a la Orden
+          const orderItems = quoteItems.map(item => ({
+              orden_id: orderData.id,
+              equipo: item.equipo,
+              marca: item.marca,
+              modelo: item.modelo,
+              no_serie: item.no_serie,
+              identificacion: item.identificacion,
+              servicio: item.servicio,
+              estatus_tecnico: 'Pendiente' // Estado inicial para el técnico
+          }))
+
+          const { error: insertItemsError } = await supabase.from('service_order_items').insert(orderItems)
+          if (insertItemsError) throw insertItemsError
+
+          // 5. Finalmente, actualizar estatus de la cotización a Aprobada
+          const { error: updateError } = await supabase
+              .from('quotes')
+              .update({ estatus: 'Aprobada' })
+              .eq('id', quote.id)
+
+          if (updateError) throw updateError
+
+          // Éxito
+          alert(`✅ Cotización Aprobada.\n📄 Se generó la Orden: ${folioOrden}\n🚀 Enviada a Metrología.`)
+          setQuotes(prev => prev.filter(q => q.id !== quote.id))
 
       } catch (e: any) {
-          alert("Error: " + e.message)
+          alert("Error al aprobar: " + e.message)
+      } finally {
+          setProcessingId(null)
       }
   }
 
-  // Filtrado simple por folio o empresa
+  const handleReject = async (quoteId: number) => {
+      if (!confirm("¿Rechazar cotización y devolver a borrador?")) return
+      setProcessingId(quoteId)
+      try {
+          const { error } = await supabase
+            .from('quotes')
+            .update({ estatus: 'Borrador' })
+            .eq('id', quoteId)
+
+          if (error) throw error
+          setQuotes(prev => prev.filter(q => q.id !== quoteId))
+          alert("Cotización rechazada y devuelta al asesor.")
+      } catch (e: any) {
+          alert("Error: " + e.message)
+      } finally {
+          setProcessingId(null)
+      }
+  }
+
+  // Filtrado visual
   const filteredQuotes = quotes.filter(q => 
     q.folio?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     q.clients?.empresa?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -79,7 +144,7 @@ export default function ApprovalPage() {
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
           <h1 className="text-3xl font-black text-slate-800 uppercase tracking-tighter leading-none">Panel de Aprobación</h1>
-          <p className="text-xs text-slate-400 font-bold mt-1 uppercase">Cotizaciones pendientes de revisión</p>
+          <p className="text-xs text-slate-400 font-bold mt-1 uppercase">Gerencia Técnica / Calidad</p>
         </div>
         <button onClick={() => router.push('/asesor')} className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-xs hover:bg-slate-50 transition text-slate-600 shadow-sm">
             <ArrowLeft size={16} /> VOLVER
@@ -111,7 +176,7 @@ export default function ApprovalPage() {
           ) : filteredQuotes.length === 0 ? (
               <div className="flex flex-col h-64 items-center justify-center text-slate-400">
                   <FileText size={48} className="mb-2 opacity-20"/>
-                  <p className="font-bold text-sm uppercase">No hay cotizaciones pendientes de aprobación</p>
+                  <p className="font-bold text-sm uppercase">Todo al día. No hay pendientes.</p>
               </div>
           ) : (
               <div className="overflow-x-auto">
@@ -122,7 +187,7 @@ export default function ApprovalPage() {
                               <th className="px-6 py-4">Cliente</th>
                               <th className="px-6 py-4">Fecha</th>
                               <th className="px-6 py-4">Condiciones</th>
-                              <th className="px-6 py-4 text-center">Acciones</th>
+                              <th className="px-6 py-4 text-center">Decisión</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -130,7 +195,7 @@ export default function ApprovalPage() {
                               <tr key={q.id} className="hover:bg-slate-50 transition-colors group">
                                   <td className="px-6 py-4 font-black text-blue-700 text-sm">{q.folio}</td>
                                   <td className="px-6 py-4 uppercase font-bold text-slate-700">{q.clients?.empresa || 'S/N'}</td>
-                                  <td className="px-6 py-4 font-mono text-slate-500">{q.fecha || '-'}</td>
+                                  <td className="px-6 py-4 font-mono text-slate-500">{q.fecha ? new Date(q.fecha).toLocaleDateString('es-MX') : '-'}</td>
                                   <td className="px-6 py-4">
                                       <div className="flex flex-col gap-1">
                                           <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] w-fit font-bold">Pago: {q.condicion_de_pago} días</span>
@@ -139,6 +204,7 @@ export default function ApprovalPage() {
                                   </td>
                                   <td className="px-6 py-4">
                                       <div className="flex justify-center gap-2">
+                                          {/* VER */}
                                           <button 
                                             onClick={() => router.push(`/asesor/cotizacion/${q.id}`)}
                                             className="bg-white border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-200 p-2 rounded-lg transition shadow-sm"
@@ -147,20 +213,25 @@ export default function ApprovalPage() {
                                               <Eye size={16}/>
                                           </button>
                                           
+                                          {/* RECHAZAR */}
                                           <button 
-                                            onClick={() => handleAction(q.id, 'Rechazar')}
-                                            className="bg-red-50 text-red-600 hover:bg-red-100 p-2 rounded-lg transition font-bold flex items-center gap-1"
-                                            title="Rechazar (Volver a borrador)"
+                                            onClick={() => handleReject(q.id)}
+                                            disabled={processingId === q.id}
+                                            className="bg-red-50 text-red-600 hover:bg-red-100 p-2 rounded-lg transition font-bold flex items-center gap-1 disabled:opacity-50"
+                                            title="Rechazar"
                                           >
                                               <XCircle size={16}/>
                                           </button>
 
+                                          {/* APROBAR (Aquí ocurre la magia) */}
                                           <button 
-                                            onClick={() => handleAction(q.id, 'Aprobar')}
-                                            className="bg-emerald-500 text-white hover:bg-emerald-600 p-2 rounded-lg transition font-bold flex items-center gap-2 shadow-md shadow-emerald-200"
-                                            title="Aprobar Orden"
+                                            onClick={() => handleApprove(q)}
+                                            disabled={processingId === q.id}
+                                            className="bg-emerald-500 text-white hover:bg-emerald-600 p-2 rounded-lg transition font-bold flex items-center gap-2 shadow-md shadow-emerald-200 disabled:opacity-50"
+                                            title="Aprobar y Generar Orden"
                                           >
-                                              <CheckCircle size={16}/> APROBAR
+                                              {processingId === q.id ? <Loader2 className="animate-spin" size={16}/> : <CheckCircle size={16}/>}
+                                              APROBAR
                                           </button>
                                       </div>
                                   </td>
