@@ -1,44 +1,96 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from '@/lib/supabase/client'
-import { cn } from "@/lib/utils" 
+import { cn, withTimeout } from "@/lib/utils" 
 import { 
   LayoutDashboard, Users, FileText, Ruler, 
-  ClipboardCheck, LogOut, Shield, Loader2, Gauge // 👈 Agregado Gauge
+  ClipboardCheck, LogOut, Shield, Loader2, Gauge 
 } from "lucide-react"
+import { logout } from '@/app/(dashboard)/login/actions'
 
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
+  
   const [role, setRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  
+  // Ref para distinguir entre expiración de sesión y cierre intencional
+  const isIntentionalLogout = useRef(false)
 
   useEffect(() => {
+    // 1. Chequeo inicial al cargar
     checkUser()
+
+    // 2. SUSCRIPCIÓN EN TIEMPO REAL
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            await checkUser() // Volver a consultar el rol
+        } else if (event === 'SIGNED_OUT') {
+            if (!isIntentionalLogout.current) {
+                // La sesión expiró espontáneamente
+                handleLogout(true, true)
+            } else {
+                setRole(null)
+                setUserEmail(null)
+            }
+        }
+    })
+
+    return () => {
+        subscription.unsubscribe()
+    }
   }, [])
 
   async function checkUser() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user && user.email) {
-       const { data: profile } = await supabase
-         .from('profiles')
-         .select('role') 
-         .eq('email', user.email)
-         .single()
-       
-       setRole(profile?.role || 'Asesor')
+    try {
+        const { data: { user } } = await withTimeout(supabase.auth.getUser(), 8000)
+        
+        if (user && user.email) {
+           setUserEmail(user.email)
+           
+           // Consultar perfil para el rol
+           const { data: profile } = await withTimeout(
+             supabase
+               .from('profiles')
+               .select('role') 
+               .eq('email', user.email)
+               .maybeSingle(), 
+             5000
+           )
+           
+           // Si no tiene perfil, asumimos Asesor o lo que definas por defecto
+           setRole(profile?.role || 'Asesor')
+        }
+    } catch (error) {
+        console.error("Error verificando sesión (Timeout o Fallo):", error)
+        // Eliminado window.location.reload() por causar bucle infinito
+    } finally {
+        setLoading(false)
     }
-    setLoading(false)
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.refresh()
-    router.push('/login')
+  const handleLogout = async (expired: boolean = false, skipSignOut: boolean = false) => {
+    isIntentionalLogout.current = true
+    // 1. Limpiamos interfaz (esto previene el bucle infinito del listener)
+    setRole(null)
+    setUserEmail(null)
+    
+    // 2. Llamamos servidor para destruir HTTP Only cookies y token en base de datos
+    await logout()
+    
+    // 3. Purgar caché del lado del cliente remanente
+    if (!skipSignOut) {
+        await supabase.auth.signOut()
+    }
+    
+    // 4. Limpiar caché completa del Router de NextJS con redirección dura
+    window.location.href = expired ? '/login?expired=true' : '/login'
   }
 
   const allMenuItems = [
@@ -70,7 +122,6 @@ export default function Sidebar() {
       color: "text-orange-700",
       roles: ['Admin', 'Gerente', 'Metrólogo']
     },
-    // 👇 NUEVO ÍTEM DE INVENTARIO
     {
       title: "Inventario",
       href: "/inventario",
@@ -87,9 +138,9 @@ export default function Sidebar() {
     },
   ]
 
-  const visibleMenu = allMenuItems.filter(item => 
-    role ? item.roles.includes(role) : false
-  )
+  // Si está cargando, no mostramos nada o un esqueleto básico
+  // Si no hay rol (no logueado), no mostramos el menú para evitar parpadeos
+  const visibleMenu = role ? allMenuItems.filter(item => item.roles.includes(role)) : []
 
   return (
     <div className="space-y-4 py-4 flex flex-col min-h-screen bg-slate-900 text-white">
@@ -101,7 +152,7 @@ export default function Sidebar() {
         </Link>
         
         {loading ? (
-           <div className="px-4 text-slate-500 text-xs flex gap-2"><Loader2 className="animate-spin" size={14}/> Cargando menú...</div>
+           <div className="px-4 text-slate-500 text-xs flex gap-2 animate-pulse"><Loader2 className="animate-spin" size={14}/> Conectando...</div>
         ) : (
           <div className="space-y-1">
             {visibleMenu.map((route) => (
@@ -123,13 +174,18 @@ export default function Sidebar() {
         )}
 
         <div className="mt-auto pt-8 border-t border-slate-800">
-             <div className="px-4 mb-4">
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Conectado como</p>
-                <div className="flex items-center gap-2 mt-2 bg-slate-800/50 p-2 rounded-md">
-                    <Shield size={14} className="text-emerald-500"/>
-                    <span className="text-xs font-bold text-slate-200">{role || 'Cargando...'}</span>
-                </div>
-             </div>
+             {role && (
+                 <div className="px-4 mb-4">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Conectado como</p>
+                    <div className="flex items-center gap-2 mt-2 bg-slate-800/50 p-2 rounded-md">
+                        <Shield size={14} className="text-emerald-500"/>
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-200">{role}</span>
+                            {userEmail && <span className="text-[9px] text-slate-500 truncate max-w-[120px]">{userEmail}</span>}
+                        </div>
+                    </div>
+                 </div>
+             )}
              
              <button 
                 onClick={handleLogout}

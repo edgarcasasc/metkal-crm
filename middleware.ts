@@ -1,7 +1,8 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // 1. Crear una respuesta inicial
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -13,59 +14,45 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
+        getAll() {
+          return request.cookies.getAll()
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
+        setAll(cookiesToSet) {
+          // Esto es CRÍTICO: Actualiza las cookies en el request Y en el response
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
           })
           response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request,
           })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
         },
       },
     }
   )
 
+  // 2. Refrescar sesión si es necesario
+  // IMPORTANTE: getUser() es más seguro que getSession() en middleware
   const { data: { user } } = await supabase.auth.getUser()
 
-  // REGLAS DE SEGURIDAD:
+  // 3. Protección de Rutas
+  const url = request.nextUrl.clone()
+  const isLoginPage = url.pathname === '/login'
+  const isAuthRoute = url.pathname.startsWith('/auth')
+  const isPublicAsset = url.pathname.includes('.') // Detecta archivos como logo.png, style.css
 
-  // 1. Si NO está logueado y quiere entrar al Dashboard (/), mándalo al Login
-  if (!user && request.nextUrl.pathname !== '/login') {
-    return NextResponse.redirect(new URL('/login', request.url))
+  // CASO A: No logueado y trata de entrar a ruta protegida
+  if (!user && !isLoginPage && !isAuthRoute && !isPublicAsset) {
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
   }
 
-  // 2. Si YA está logueado y quiere entrar al Login, mándalo al Dashboard
-  if (user && request.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/', request.url))
+  // CASO B: Ya logueado y trata de entrar al Login
+  if (user && isLoginPage) {
+    url.pathname = '/'
+    return NextResponse.redirect(url)
   }
 
   return response
@@ -75,11 +62,11 @@ export const config = {
   matcher: [
     /*
      * Coincidir con todas las rutas excepto:
-     * - _next/static (archivos estáticos)
-     * - _next/image (optimización de imágenes)
-     * - favicon.ico (icono)
-     * - auth/callback (necesario para confirmar emails/oauth)
+     * - _next/static (archivos estáticos de Next.js)
+     * - _next/image (imágenes optimizadas)
+     * - favicon.ico
+     * - Archivos con extensión (svg, png, jpg, etc.)
      */
-    '/((?!_next/static|_next/image|favicon.ico|auth/callback).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

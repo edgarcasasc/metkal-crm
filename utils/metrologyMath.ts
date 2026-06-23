@@ -21,3 +21,14 @@ export const calculateUncertainty = (stdDev: number, resolution: number, n: numb
     // Expandida (k=2, 95.45%)
     return parseFloat((uC * 2).toFixed(4));
 };
+
+export const calculateError = (measuredValue: number, expectedValue: number) => {
+    return parseFloat((measuredValue - expectedValue).toFixed(4));
+};
+
+export const calculateAverageError = (measuredValues: (number | null | undefined)[], expectedValue: number) => {
+    const validValues = measuredValues.filter((v): v is number => typeof v === 'number');
+    if (validValues.length === 0) return 0;
+    const mean = calculateMean(validValues);
+    return parseFloat((mean - expectedValue).toFixed(4));
+};

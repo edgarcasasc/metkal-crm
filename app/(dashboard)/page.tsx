@@ -7,9 +7,10 @@ import {
   AlertCircle, ArrowRight, Activity, Wrench, FileText
 } from 'lucide-react'
 import Link from 'next/link'
+import { withTimeout } from '@/lib/utils'
 
 export default function DashboardPage() {
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
   const [loading, setLoading] = useState(true)
   
   // Datos estadísticos
@@ -33,42 +34,45 @@ export default function DashboardPage() {
     try {
       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 
-      // 1. CONTEOS RÁPIDOS (KPIs)
-      const { count: pendingQ } = await supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('estatus', 'En Revisión')
-      const { count: approvedQ } = await supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('estatus', 'Aprobada').gte('fecha', startOfMonth)
-      const { count: activeO } = await supabase.from('service_orders').select('*', { count: 'exact', head: true }).neq('estatus', 'Terminado').neq('estatus', 'Cancelado')
-      const { count: finishedO } = await supabase.from('service_orders').select('*', { count: 'exact', head: true }).eq('estatus', 'Terminado').gte('updated_at', startOfMonth)
+      await withTimeout((async () => {
+        // 1. CONTEOS RÁPIDOS (KPIs)
+        const { count: pendingQ } = await supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('estatus', 'En Revisión')
+        const { count: approvedQ } = await supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('estatus', 'Aprobada').gte('fecha', startOfMonth)
+        const { count: activeO } = await supabase.from('service_orders').select('*', { count: 'exact', head: true }).neq('estatus', 'Terminado').neq('estatus', 'Cancelado')
+        const { count: finishedO } = await supabase.from('service_orders').select('*', { count: 'exact', head: true }).eq('estatus', 'Terminado').gte('updated_at', startOfMonth)
 
-      setStats({
-        pendingQuotes: pendingQ || 0,
-        approvedMonth: approvedQ || 0,
-        activeOrders: activeO || 0,
-        finishedMonth: finishedO || 0
-      })
+        setStats({
+          pendingQuotes: pendingQ || 0,
+          approvedMonth: approvedQ || 0,
+          activeOrders: activeO || 0,
+          finishedMonth: finishedO || 0
+        })
 
-      // 2. LISTA: Cotizaciones por Aprobar (Prioridad Alta)
-      const { data: pendingData } = await supabase
-        .from('quotes')
-        .select('id, folio, fecha, clients(empresa)')
-        .eq('estatus', 'En Revisión')
-        .order('id', { ascending: true }) // Las más viejas primero (urgencia)
-        .limit(5)
-      
-      setPendingList(pendingData || [])
+        // 2. LISTA: Cotizaciones por Aprobar (Prioridad Alta)
+        const { data: pendingData } = await supabase
+          .from('quotes')
+          .select('id, folio, fecha, clients(empresa)')
+          .eq('estatus', 'En Revisión')
+          .order('id', { ascending: true }) // Las más viejas primero (urgencia)
+          .limit(5)
+        
+        setPendingList(pendingData || [])
 
-      // 3. LISTA: Órdenes en Metrología (Recientes)
-      const { data: ordersData } = await supabase
-        .from('service_orders')
-        .select('id, folio, fecha_programada, estatus, clients(empresa)')
-        .neq('estatus', 'Terminado')
-        .neq('estatus', 'Cancelado')
-        .order('fecha_programada', { ascending: true }) // Las más próximas a vencer primero
-        .limit(5)
+        // 3. LISTA: Órdenes en Metrología (Recientes)
+        const { data: ordersData } = await supabase
+          .from('service_orders')
+          .select('id, folio, fecha_programada, estatus, clients(empresa)')
+          .neq('estatus', 'Terminado')
+          .neq('estatus', 'Cancelado')
+          .order('fecha_programada', { ascending: true }) // Las más próximas a vencer primero
+          .limit(5)
 
-      setActiveOrdersList(ordersData || [])
+        setActiveOrdersList(ordersData || [])
+      })(), 10000)
 
     } catch (error) {
       console.error("Error dashboard:", error)
+      // Remove dangerous window.location.reload() which causes infinite loops
     } finally {
       setLoading(false)
     }

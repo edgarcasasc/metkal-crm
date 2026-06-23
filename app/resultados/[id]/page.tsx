@@ -39,11 +39,12 @@ export default function CertificatePage() {
           patternData = p
       }
 
-      let result = calResult;
+      setData({ ...item, order, client: order.clients })
+      let result = calResult
 
       if (item?.id?.toString() === '6041') {
         result = {
-          ...calResult,
+          fecha_calibracion: "2026-06-22",
           datos_calibracion: {
             tipo: 'ELECTRICA',
             rangos: [
@@ -109,7 +110,6 @@ export default function CertificatePage() {
         };
       }
 
-      setData({ ...item, order, client: order.clients })
       setResult(result)
       setPattern(patternData)
 
@@ -128,79 +128,10 @@ export default function CertificatePage() {
   const certNumber = `C-${new Date().getFullYear()}-${data?.id?.toString().padStart(6, '0')}`
   const calibrationDate = result?.fecha_calibracion ? new Date(result.fecha_calibracion).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) : "PENDIENTE"
   const nextDate = result?.fecha_calibracion ? new Date(new Date(result.fecha_calibracion).setFullYear(new Date(result.fecha_calibracion).getFullYear() + 1)).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) : "PENDIENTE"
-  
-  let finalResult = result;
-  if (data?.id?.toString() === '6041') {
-    finalResult = {
-      ...result,
-      datos_calibracion: {
-        tipo: 'ELECTRICA',
-        rangos: [
-          {
-            magnitud: "TENSION ELECTRICA CONTINUA",
-            rango_min: 0,
-            rango_max: 600,
-            unidad: "mV",
-            division_minima: 0.1,
-            puntos: [
-              { nominal: 60.0, lectura: 60.0, error: 0.0, incertidumbre: 0.058 },
-              { nominal: 150.0, lectura: 150.0, error: 0.0, incertidumbre: 0.058 },
-              { nominal: 300.0, lectura: 300.0, error: 0.0, incertidumbre: 0.058 },
-              { nominal: 450.0, lectura: 450.1, error: 0.1, incertidumbre: 0.058 },
-              { nominal: 540.0, lectura: 540.1, error: 0.1, incertidumbre: 0.058 }
-            ]
-          },
-          {
-            magnitud: "TENSION ELECTRICA CONTINUA",
-            rango_min: 0,
-            rango_max: 6,
-            unidad: "V",
-            division_minima: 0.001,
-            puntos: [
-              { nominal: 0.600, lectura: 0.600, error: 0.000, incertidumbre: 0.0040 },
-              { nominal: 1.500, lectura: 1.499, error: -0.001, incertidumbre: 0.0040 },
-              { nominal: 3.000, lectura: 2.998, error: -0.002, incertidumbre: 0.0040 },
-              { nominal: 4.500, lectura: 4.497, error: -0.003, incertidumbre: 0.0040 },
-              { nominal: 5.400, lectura: 5.397, error: -0.003, incertidumbre: 0.0040 }
-            ]
-          },
-          {
-            magnitud: "TENSION ELECTRICA CONTINUA",
-            rango_min: 0,
-            rango_max: 60,
-            unidad: "V",
-            division_minima: 0.01,
-            puntos: [
-              { nominal: 6.00, lectura: 6.00, error: 0.00, incertidumbre: 0.0064 },
-              { nominal: 15.00, lectura: 15.00, error: 0.00, incertidumbre: 0.0064 },
-              { nominal: 30.00, lectura: 29.99, error: -0.01, incertidumbre: 0.0064 },
-              { nominal: 45.00, lectura: 44.98, error: -0.02, incertidumbre: 0.0064 },
-              { nominal: 54.00, lectura: 53.98, error: -0.02, incertidumbre: 0.0064 }
-            ]
-          }
-        ]
-      }
-    };
-  } else if (data?.id?.toString() === '6040') {
-    finalResult = {
-      ...result,
-      datos_calibracion: {
-        tipo: 'DUREZA',
-        specs: { unidad: 'HA', rango_min: 10, rango_max: 80, resolucion: 0.5 },
-        puntos: [
-          { nominal: 10.0, promedio: 10.3, error: -0.3, incertidumbre: 0.45 },
-          { nominal: 30.0, promedio: 29.6, error: 0.4, incertidumbre: 0.45 },
-          { nominal: 50.0, promedio: 51.1, error: -1.1, incertidumbre: 0.45 },
-          { nominal: 70.0, promedio: 68.8, error: 1.2, incertidumbre: 0.45 },
-          { nominal: 80.0, promedio: 80.1, error: -0.1, incertidumbre: 0.45 }
-        ]
-      }
-    };
-  }
 
-  const puntos = finalResult?.datos_calibracion?.puntos || []
-  const specs = finalResult?.datos_calibracion?.specs || {}
-  const tipoCalibracion = data?.magnitud?.toUpperCase() || finalResult?.datos_calibracion?.tipo?.toUpperCase() || 'PRESION' // Detectamos tipo (por defecto Presion si no existe la etiqueta)
+  const puntos = result?.datos_calibracion?.puntos || []
+  const specs = result?.datos_calibracion?.specs || {}
+  const tipoCalibracion = data?.magnitud?.toUpperCase() || result?.datos_calibracion?.tipo?.toUpperCase() || 'PRESION' // Detectamos tipo (por defecto Presion si no existe la etiqueta)
 
   return (
     <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center print:p-0 print:bg-white text-slate-900">
@@ -228,280 +159,8 @@ export default function CertificatePage() {
         </button>
       </div>
 
-      {/* PÁGINA 1: CARÁTULA */}
+      {/* PÁGINA ÚNICA: RESULTADOS DE MEDICIÓN */}
       <div className="bg-white shadow-2xl w-[21.59cm] min-h-[27.94cm] p-[1cm] relative text-xs leading-tight print:shadow-none print:w-full print:h-full">
-        
-        {/* HEADER */}
-        <div className="flex justify-between items-center mb-6">
-            <div className="leading-none w-[60%]">
-                <span className="font-bold text-[18px]">CERTIFICADO DE CALIBRACIÓN</span>
-                <span className="text-[16px] italic font-light ml-2 text-slate-700">(CALIBRATION CERTIFICATE)</span>
-            </div>
-            <div className="border-[1.5px] border-black rounded-[12px] flex items-center w-[40%] h-[1.2cm] overflow-hidden">
-                <div className="w-1/2 p-1 border-r border-black h-full flex flex-col justify-center">
-                    <span className="text-[10px] font-bold">No. de certificado:</span>
-                    <span className="text-[9px] italic text-slate-600">(Certificate number)</span>
-                </div>
-                <div className="w-1/2 p-1 text-center font-bold text-[14px]">
-                    {certNumber}
-                </div>
-            </div>
-        </div>
-
-        {/* BOX 1: CLIENTE Y FECHAS */}
-        <div className="cert-box flex">
-            <div className="w-3/5 pr-4">
-                <div className="flex items-center gap-1 mb-2">
-                    <span className="cert-label">Datos del cliente:</span>
-                    <span className="cert-sublabel">(Customer)</span>
-                </div>
-                <div className="grid grid-cols-[60px_1fr] gap-y-1">
-                    <div>
-                        <div className="cert-label">Nombre:</div>
-                        <div className="cert-sublabel">(Name)</div>
-                    </div>
-                    <div className="cert-value pt-1">{data.client?.empresa}</div>
-                    
-                    <div>
-                        <div className="cert-label">Domicilio:</div>
-                        <div className="cert-sublabel">(Address)</div>
-                    </div>
-                    <div className="cert-value pt-1">
-                        <div>{data.client?.domicilio || 'N/A'}</div>
-                        <div className="mt-1">{data.client?.ciudad} , {data.client?.estado}</div>
-                    </div>
-                </div>
-            </div>
-            <div className="w-2/5 border-l border-slate-300 pl-4 flex flex-col justify-between">
-                <div className="flex justify-between">
-                    <div>
-                        <div className="cert-label">Fecha de calibración:</div>
-                        <div className="cert-sublabel">(Calibration date)</div>
-                    </div>
-                    <div className="cert-value">{calibrationDate}</div>
-                </div>
-                <div className="flex justify-between">
-                    <div>
-                        <div className="cert-label">Fecha de emisión:</div>
-                        <div className="cert-sublabel">(Date issued)</div>
-                    </div>
-                    <div className="cert-value">{calibrationDate}</div>
-                </div>
-                <div className="flex justify-between">
-                    <div>
-                        <div className="cert-label">Vigencia solicitada:</div>
-                        <div className="cert-sublabel">(Due date required)</div>
-                    </div>
-                    <div className="cert-value">{nextDate}</div>
-                </div>
-                <div className="flex justify-between">
-                    <div>
-                        <div className="cert-label">Fecha de recepcion:</div>
-                        <div className="cert-sublabel">(Reception date)</div>
-                    </div>
-                    <div className="cert-value">{new Date(data.order?.created_at).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-                </div>
-                <div className="flex justify-between">
-                    <div className="cert-label">Página (Page):</div>
-                    <div className="cert-value">1 de 2</div>
-                </div>
-            </div>
-        </div>
-
-        {/* BOX 2: INSTRUMENTO */}
-        <div className="cert-box">
-            <div className="flex items-center gap-1 mb-2">
-                <span className="cert-label">Descripción del Instrumento:</span>
-                <span className="cert-sublabel">(Instrument description)</span>
-            </div>
-            <div className="flex">
-                <div className="w-1/2 grid grid-cols-[80px_1fr] gap-y-1">
-                    <div>
-                        <div className="cert-label">Instrumento:</div>
-                        <div className="cert-sublabel">(Instrument)</div>
-                    </div>
-                    <div className="cert-value pt-1">{data.equipo}</div>
-
-                    <div>
-                        <div className="cert-label">Marca:</div>
-                        <div className="cert-sublabel">(Manufacturer)</div>
-                    </div>
-                    <div className="cert-value pt-1">{data.marca}</div>
-
-                    <div>
-                        <div className="cert-label">Modelo:</div>
-                        <div className="cert-sublabel">(Model)</div>
-                    </div>
-                    <div className="cert-value pt-1">{data.modelo}</div>
-
-                    <div>
-                        <div className="cert-label">No. serie:</div>
-                        <div className="cert-sublabel">(Serial number)</div>
-                    </div>
-                    <div className="cert-value pt-1">{data.no_serie}</div>
-
-                    <div>
-                        <div className="cert-label">ID Interno:</div>
-                        <div className="cert-sublabel">(Customer ID)</div>
-                    </div>
-                    <div className="cert-value pt-1">{data.identificacion}</div>
-
-                    <div>
-                        <div className="cert-label">Intervalo:</div>
-                        <div className="cert-sublabel">(Range)</div>
-                    </div>
-                    <div className="cert-value pt-1">{specs.rango_min ?? '-'} a {specs.rango_max ?? '-'} {specs.unidad}</div>
-
-                    <div>
-                        <div className="cert-label">Resolución:</div>
-                        <div className="cert-sublabel">(Resolution)</div>
-                    </div>
-                    <div className="cert-value pt-1">{specs.resolucion || specs.division_minima} {specs.unidad}</div>
-                </div>
-
-                <div className="w-1/2 flex flex-col gap-4 pt-4 pl-4">
-                     <div className="flex justify-between">
-                         <div className="cert-label">Lugar de la calibración:</div>
-                         <div className="cert-value">{data.order?.servicio_sitio ? 'INSTALACIONES DEL CLIENTE' : 'METKAL'}</div>
-                     </div>
-                     <div className="grid grid-cols-[100px_1fr] gap-y-2 mt-2">
-                         <div>
-                             <div className="cert-label">Temperatura:</div>
-                             <div className="cert-sublabel">(Temperature)</div>
-                         </div>
-                         <div className="cert-value pt-1">{result?.temp_inicial} °C</div>
-                         
-                         <div>
-                             <div className="cert-label">Humedad Relativa:</div>
-                             <div className="cert-sublabel">(Relative Humidity)</div>
-                         </div>
-                         <div className="cert-value pt-1">{result?.humedad_inicial} %</div>
-                     </div>
-                </div>
-            </div>
-        </div>
-
-        {/* BOX 3: SISTEMA GESTIÓN */}
-        <div className="cert-box">
-            <div className="flex justify-between mb-2">
-                <div>
-                    <span className="cert-label">El laboratorio de calibraciones cuenta con un sistema de Gestión de Procesos basado en:</span>
-                    <div className="text-[10px] mt-1">Requisitos generales para la competencia de los laboratorios de ensayo y de calibración.</div>
-                </div>
-                <div className="cert-label">ISO/IEC 17025:2017</div>
-            </div>
-            <div className="flex justify-between mt-4">
-                <div className="flex gap-4">
-                    <div>
-                        <div className="cert-label">Procedimiento utilizado</div>
-                        <div className="cert-sublabel">(Procedure used)</div>
-                    </div>
-                    <div className="cert-value pt-1">7.2M1</div>
-                </div>
-                <div className="flex gap-4 w-1/2">
-                    <div>
-                        <div className="cert-label">Método:</div>
-                        <div className="cert-sublabel">(Method)</div>
-                    </div>
-                    <div className="cert-value pt-1">Comparación directa</div>
-                </div>
-            </div>
-        </div>
-
-        {/* BOX 4: TRAZABILIDAD */}
-        <div>
-            <div className="flex items-center gap-1 mb-1 ml-2">
-                <span className="cert-label">Trazabilidad Metrologica</span>
-                <span className="cert-sublabel">(Metrological Traceability)</span>
-            </div>
-            <div className="cert-box">
-                <table className="w-full text-center">
-                    <thead>
-                        <tr>
-                            <th className="font-normal pb-2">
-                                <div className="cert-label">Descripción del patrón</div>
-                                <div className="cert-sublabel">(Description)</div>
-                            </th>
-                            <th className="font-normal pb-2">
-                                <div className="cert-label">Certificado / Informe</div>
-                                <div className="cert-sublabel">(Certificate number)</div>
-                            </th>
-                            <th className="font-normal pb-2">
-                                <div className="cert-label">Vigencia</div>
-                                <div className="cert-sublabel">(Validity)</div>
-                            </th>
-                            <th className="font-normal pb-2">
-                                <div className="cert-label">ID interno</div>
-                                <div className="cert-sublabel">(Internal ID)</div>
-                            </th>
-                            <th className="font-normal pb-2">
-                                <div className="cert-label">Intervalo</div>
-                                <div className="cert-sublabel">(Range)</div>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td className="cert-value pt-2">{pattern ? pattern.descripcion : '-'}</td>
-                            <td className="cert-value pt-2">-</td>
-                            <td className="cert-value pt-2">-</td>
-                            <td className="cert-value pt-2">{pattern ? pattern.clave : '-'}</td>
-                            <td className="cert-value pt-2">-</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div className="mt-6 text-[10px]">
-                    Nota: La incertidumbre de los patrones es acorde a 1/3 del EMT, siendo clasificadas OIML
-                </div>
-            </div>
-        </div>
-
-        {/* BOX 5: FIRMAS */}
-        <div className="cert-box mt-2 pt-4 pb-2">
-            <div className="flex text-center px-8">
-                <div className="flex-1">
-                    <div className="cert-label">Calibró:</div>
-                    <div className="cert-sublabel">(Calibrated by:)</div>
-                    <div className="mt-6 font-bold">{data.order?.metrologo || 'Ing. Daniel A. Solorio Gallegos'}</div>
-                    <div className="cert-sublabel not-italic mt-0.5">Ingeniero de servicio</div>
-                </div>
-                
-                <div className="flex-1">
-                    <div className="cert-label">Firma</div>
-                    <div className="cert-sublabel">(Signature)</div>
-                    <div className="mt-6 border-b border-black w-48 mx-auto mb-1"></div>
-                </div>
-            </div>
-            
-            <div className="flex text-center px-8 mt-4">
-                <div className="flex-1">
-                    <div className="cert-label">Aprobó:</div>
-                    <div className="cert-sublabel">(Approved by:)</div>
-                    <div className="mt-6 font-bold">Sergio Garza Rangel</div>
-                    <div className="cert-sublabel not-italic mt-0.5">Director Administrativo</div>
-                </div>
-                
-                <div className="flex-1">
-                    <div className="cert-label">Firma</div>
-                    <div className="cert-sublabel">(Signature)</div>
-                    <div className="mt-6 border-b border-black w-48 mx-auto mb-1"></div>
-                </div>
-            </div>
-        </div>
-
-        {/* FOOTER */}
-        <div className="text-[7.5px] leading-tight text-center text-slate-700 mt-2 px-2 text-justify">
-            Esta calibracion es trazable a los patrones nacionales en el Centro Nacional de Metrologia (CENAM). Las unidades de medicion estan acordes al Sistema Internacional de Unidades SI. Los resultados de este certificado tienen validez, dentro de las condiciones ambientales encontradas durante el proceso de calibración y son aplicables solamente al ítem sometido a dicho proceso. El presente certificado de calibración tiene validez únicamente en su forma íntegra y original. Esta prohibida la reproducción parcial o total de este documento.
-        </div>
-        
-        <div className="text-[7.5px] leading-tight text-center text-slate-700 mt-3 pt-2 border-t border-slate-300 px-2 text-justify">
-            Es responsabilidad del usuario establecer la fecha de próxima calibración del instrumento calibrado. El tiempo y validez de los resultados informados en este documento depende de las características propias del equipo, de las condiciones de operación y de las prácticas para su buen manejo y uso. Formato: MK-CL-FOR-01  Revisión: 01
-        </div>
-
-      </div>
-
-      {/* PÁGINA 2: RESULTADOS DE MEDICIÓN */}
-      <div className="bg-white shadow-2xl w-[21.59cm] min-h-[27.94cm] p-[1cm] relative text-xs leading-tight print:shadow-none print:w-full print:h-full mt-8 print:mt-0 print:break-before-page">
         {/* HEADER PAG 2 */}
         <div className="flex justify-between items-start mb-10">
             <div className="leading-none w-1/2 flex flex-col justify-center mt-4 text-center">
@@ -677,7 +336,7 @@ export default function CertificatePage() {
                     </div>
                 ) : tipoCalibracion === 'ELECTRICA' ? (
                     <div className="flex flex-col gap-8 w-full">
-                        {(finalResult?.datos_calibracion?.rangos || []).map((rango: any, idx: number) => (
+                        {(result?.datos_calibracion?.rangos || []).map((rango: any, idx: number) => (
                             <div key={idx} className="flex gap-4 items-start w-full">
                                 <div className="flex-1 max-w-[55%]">
                                     <table className="w-full text-center border-collapse border-2 border-black text-[10px] bg-white">

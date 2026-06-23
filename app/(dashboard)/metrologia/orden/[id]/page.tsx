@@ -6,11 +6,19 @@ import { createClient } from '@/lib/supabase/client'
 import PressureCalibrationForm from "@/components/metrology/pressure/PressureCalibrationForm";
 import TemperatureCalibrationForm from "@/components/metrology/temperature/TemperatureCalibrationForm";
 import DimensionalCalibrationForm from "@/components/metrology/dimensional/DimensionalCalibrationForm";
+import ElectricalCalibrationForm from "@/components/metrology/electrical/ElectricalCalibrationForm";
+import HardnessCalibrationForm from "@/components/metrology/hardness/HardnessCalibrationForm";
+import TimeCalibrationForm from "@/components/metrology/time/TimeCalibrationForm";
+import OpticsCalibrationForm from "@/components/metrology/optics/OpticsCalibrationForm";
+import ChemistryCalibrationForm from "@/components/metrology/chemistry/ChemistryCalibrationForm";
+import TorqueCalibrationForm from "@/components/metrology/torque/TorqueCalibrationForm";
+import VolumeCalibrationForm from "@/components/metrology/volume/VolumeCalibrationForm";
+import MassCalibrationForm from "@/components/metrology/mass/MassCalibrationForm";
 import GenericCalibrationForm from "@/components/metrology/generic/GenericCalibrationForm";
 import { 
     ArrowLeft, Loader2, Wrench, FileText, Save,
     AlertCircle, Thermometer, Gauge, ChevronRight,
-    Printer, Ruler, CheckCircle2, Truck, User, Calendar as CalendarIcon, MapPin
+    Printer, Ruler, CheckCircle2, Truck, User, Calendar as CalendarIcon, MapPin, Zap
 } from 'lucide-react'
 
 interface ServiceItem {
@@ -124,13 +132,38 @@ export default function Page({ params }: { params: { id: string } }) {
         const equipoNombre = (selectedItem.equipo || '').toLowerCase();
         const magnitud = (selectedItem.magnitud || '').toLowerCase();
 
-        // Lógica de detección
-        const esDimensional = magnitud === 'dimensional' || equipoNombre.includes('vernier') || equipoNombre.includes('caliper') || equipoNombre.includes('pie de rey') || equipoNombre.includes('micrometro') || equipoNombre.includes('indicador');
-        const esPresion = magnitud === 'presion' || equipoNombre.includes('manom') || equipoNombre.includes('presion') || equipoNombre.includes('vacuo');
-        const esTemperatura = magnitud === 'temperatura' || equipoNombre.includes('termo') || equipoNombre.includes('temp') || equipoNombre.includes('pirometro');
+        // Lógica de detección: La magnitud seleccionada explícitamente tiene prioridad absoluta
+        let esDimensional = magnitud === 'dimensional';
+        let esPresion = magnitud === 'presion' || magnitud === 'presión';
+        let esTemperatura = magnitud === 'temperatura';
+        let esElectrica = magnitud === 'eléctrica' || magnitud === 'electrica';
+        let esDureza = magnitud === 'dureza';
+        let esTiempo = magnitud === 'tiempo';
+        let esFrecuencia = magnitud === 'frecuencia';
+        let esOptica = magnitud === 'óptica' || magnitud === 'optica';
+        let esQuimica = magnitud === 'química' || magnitud === 'quimica';
+        let esTorque = magnitud === 'torque' || magnitud === 'par torsional';
+        let esVolumen = magnitud === 'volumen' || magnitud === 'volúmen';
+        let esMasa = magnitud === 'masa' || magnitud === 'balanza' || magnitud === 'bascula';
         
+        // Si no hay magnitud explícita, intentamos adivinar por el nombre
+        if (!esDimensional && !esPresion && !esTemperatura && !esElectrica && !esDureza && !esTiempo && !esFrecuencia && !esOptica && !esQuimica && !esTorque && !esVolumen && !esMasa) {
+            esDimensional = equipoNombre.includes('vernier') || equipoNombre.includes('caliper') || equipoNombre.includes('pie de rey') || equipoNombre.includes('micrometro') || equipoNombre.includes('indicador');
+            esPresion = equipoNombre.includes('manom') || equipoNombre.includes('presion') || equipoNombre.includes('vacuo');
+            esTemperatura = equipoNombre.includes('termo') || equipoNombre.includes('temp') || equipoNombre.includes('pirometro');
+            esElectrica = equipoNombre.includes('multimetro') || equipoNombre.includes('amperimetro');
+            esDureza = equipoNombre.includes('durometro') || equipoNombre.includes('dureza');
+            esTiempo = equipoNombre.includes('cronometro') || equipoNombre.includes('temporizador') || equipoNombre.includes('timer') || equipoNombre.includes('tiempo');
+            esFrecuencia = equipoNombre.includes('frecuencia') || equipoNombre.includes('osciloscopio') || equipoNombre.includes('tacometro') || equipoNombre.includes('centrifuga');
+            esOptica = equipoNombre.includes('optica') || equipoNombre.includes('óptica') || equipoNombre.includes('luxometro') || equipoNombre.includes('luz');
+            esQuimica = equipoNombre.includes('quimic') || equipoNombre.includes('químic') || equipoNombre.includes('ph') || equipoNombre.includes('conducti');
+            esTorque = equipoNombre.includes('torque') || equipoNombre.includes('par torsional') || equipoNombre.includes('torquimetro');
+            esVolumen = equipoNombre.includes('volumen') || equipoNombre.includes('volúmen') || equipoNombre.includes('pipeta') || equipoNombre.includes('matraz');
+            esMasa = equipoNombre.includes('masa') || equipoNombre.includes('balanza') || equipoNombre.includes('bascula') || equipoNombre.includes('báscula') || equipoNombre.includes('pesa');
+        }
+
         // Si no es ninguno de los anteriores, es Genérico
-        const esGenerico = !esPresion && !esTemperatura && !esDimensional;
+        const esGenerico = !esPresion && !esTemperatura && !esDimensional && !esElectrica && !esDureza && !esTiempo && !esFrecuencia && !esOptica && !esQuimica && !esTorque && !esVolumen && !esMasa;
 
         return (
             <div className="p-6 max-w-5xl mx-auto space-y-6 bg-slate-50 min-h-screen font-sans text-slate-600">
@@ -147,8 +180,15 @@ export default function Page({ params }: { params: { id: string } }) {
                 {esPresion ? <PressureCalibrationForm itemId={selectedItem.id} /> : 
                  esTemperatura ? <TemperatureCalibrationForm itemId={selectedItem.id} orderId={id as string} /> : 
                  esDimensional ? <DimensionalCalibrationForm itemId={selectedItem.id} /> : 
-                 esGenerico ? <GenericCalibrationForm itemId={selectedItem.id} magnitud={selectedItem.magnitud || 'Generico'} /> :
-                 null}
+                 esElectrica ? <ElectricalCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 esDureza ? <HardnessCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 esTiempo ? <TimeCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 (esFrecuencia || esOptica) ? <OpticsCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={esOptica ? 'Óptica' : 'Frecuencia'} /> :
+                 esQuimica ? <ChemistryCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 esTorque ? <TorqueCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 esVolumen ? <VolumeCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 esMasa ? <MassCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                 <GenericCalibrationForm itemId={selectedItem.id} magnitud={selectedItem.magnitud || 'Generico'} />}
             </div>
         )
     }
@@ -334,13 +374,13 @@ export default function Page({ params }: { params: { id: string } }) {
                                         <td className="p-2">
                                             <select className="w-full border border-slate-200 rounded p-0.5 text-[9px] uppercase bg-slate-50 focus:bg-white outline-none" value={item.magnitud || ''} onChange={(e) => updateItemMagnitude(item.id, e.target.value)}>
                                                 <option value="">-- Seleccionar --</option>
-                                                <option value="Dimensional">Dimensional</option>
+                                                <option value="Dureza">Dureza</option>
                                                 <option value="Eléctrica">Eléctrica</option>
                                                 <option value="Frecuencia">Frecuencia</option>
-                                                <option value="Humedad">Humedad</option>
                                                 <option value="Masa">Masa</option>
-                                                <option value="Presion">Presión</option>
-                                                <option value="Temperatura">Temperatura</option>
+                                                <option value="Óptica">Óptica</option>
+                                                <option value="Química">Química</option>
+                                                <option value="Tiempo">Tiempo</option>
                                                 <option value="Torque">Torque</option>
                                                 <option value="Volumen">Volumen</option>
                                             </select>
@@ -352,8 +392,9 @@ export default function Page({ params }: { params: { id: string } }) {
                                                         <CheckCircle2 size={8}/> OK
                                                     </span>
                                                     <div className="flex justify-center gap-1">
-                                                        <a href={`/certificados/${item.id}`} target="_blank" className="bg-blue-600 text-white p-1 rounded hover:bg-blue-700" title="Ver PDF"><FileText size={12}/></a>
-                                                        <a href={`/etiquetas/${item.id}`} target="_blank" className="bg-slate-700 text-white p-1 rounded hover:bg-slate-800" title="Imprimir"><Printer size={12}/></a>
+                                                        <a href={`/certificados/${item.id}`} target="_blank" className="bg-blue-600 text-white p-1 rounded hover:bg-blue-700" title="Ver Certificado"><FileText size={12}/></a>
+                                                        <a href={`/resultados/${item.id}`} target="_blank" className="bg-emerald-600 text-white p-1 rounded hover:bg-emerald-700" title="Ver Resultados"><FileText size={12}/></a>
+                                                        <a href={`/etiquetas/${item.id}`} target="_blank" className="bg-slate-700 text-white p-1 rounded hover:bg-slate-800" title="Imprimir Etiqueta"><Printer size={12}/></a>
                                                     </div>
                                                     <button onClick={() => setSelectedItem(item)} className="text-[8px] text-slate-400 underline hover:text-red-500">Recapturar</button>
                                                 </div>
