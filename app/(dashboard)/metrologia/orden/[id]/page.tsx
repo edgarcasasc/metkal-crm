@@ -15,6 +15,7 @@ import TorqueCalibrationForm from "@/components/metrology/torque/TorqueCalibrati
 import VolumeCalibrationForm from "@/components/metrology/volume/VolumeCalibrationForm";
 import MassCalibrationForm from "@/components/metrology/mass/MassCalibrationForm";
 import GenericCalibrationForm from "@/components/metrology/generic/GenericCalibrationForm";
+import DynamicCalibrationForm from "@/components/metrology/generic/DynamicCalibrationForm";
 import { 
     ArrowLeft, Loader2, Wrench, FileText, Save,
     AlertCircle, Thermometer, Gauge, ChevronRight,
@@ -37,9 +38,18 @@ export default function Page({ params }: { params: { id: string } }) {
     const [saving, setSaving] = useState(false)
     const [finishing, setFinishing] = useState(false) // Nuevo estado para finalizar
     const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null)
+    const [magnitudesOptions, setMagnitudesOptions] = useState<{id: number, nombre: string, config_json?: any}[]>([])
     const repairAttempted = useRef(false)
 
-    useEffect(() => { if (id) fetchWorkOrder() }, [id])
+    useEffect(() => { 
+        if (id) fetchWorkOrder()
+        fetchMagnitudes() 
+    }, [id])
+
+    async function fetchMagnitudes() {
+        const { data } = await supabase.from('magnitudes').select('*').order('nombre', { ascending: true })
+        if (data) setMagnitudesOptions(data)
+    }
 
     // --- FUNCIONES LÓGICAS ---
     async function fetchWorkOrder() {
@@ -162,8 +172,9 @@ export default function Page({ params }: { params: { id: string } }) {
             esMasa = equipoNombre.includes('masa') || equipoNombre.includes('balanza') || equipoNombre.includes('bascula') || equipoNombre.includes('báscula') || equipoNombre.includes('pesa');
         }
 
-        // Si no es ninguno de los anteriores, es Genérico
+        // Si no es ninguno de los anteriores, es Genérico/Dinámico
         const esGenerico = !esPresion && !esTemperatura && !esDimensional && !esElectrica && !esDureza && !esTiempo && !esFrecuencia && !esOptica && !esQuimica && !esTorque && !esVolumen && !esMasa;
+        const configJson = magnitudesOptions.find(m => m.nombre.toLowerCase() === magnitud)?.config_json;
 
         return (
             <div className="p-6 max-w-5xl mx-auto space-y-6 bg-slate-50 min-h-screen font-sans text-slate-600">
@@ -177,18 +188,18 @@ export default function Page({ params }: { params: { id: string } }) {
                 </div>
                 
                 {/* Router de Formularios */}
-                {esPresion ? <PressureCalibrationForm itemId={selectedItem.id} /> : 
-                 esTemperatura ? <TemperatureCalibrationForm itemId={selectedItem.id} orderId={id as string} /> : 
-                 esDimensional ? <DimensionalCalibrationForm itemId={selectedItem.id} /> : 
-                 esElectrica ? <ElectricalCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
-                 esDureza ? <HardnessCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
-                 esTiempo ? <TimeCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
+                {esPresion ? <PressureCalibrationForm itemId={selectedItem.id} magnitud={magnitud || 'Presión'} /> : 
+                 esTemperatura ? <TemperatureCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Temperatura'} /> : 
+                 esDimensional ? <DimensionalCalibrationForm itemId={selectedItem.id} magnitud={magnitud || 'Dimensional'} /> : 
+                 esElectrica ? <ElectricalCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Eléctrica'} /> :
+                 esDureza ? <HardnessCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Dureza'} /> :
+                 esTiempo ? <TimeCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Tiempo'} /> :
                  (esFrecuencia || esOptica) ? <OpticsCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={esOptica ? 'Óptica' : 'Frecuencia'} /> :
-                 esQuimica ? <ChemistryCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
-                 esTorque ? <TorqueCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
-                 esVolumen ? <VolumeCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
-                 esMasa ? <MassCalibrationForm itemId={selectedItem.id} orderId={id as string} /> :
-                 <GenericCalibrationForm itemId={selectedItem.id} magnitud={selectedItem.magnitud || 'Generico'} />}
+                 esQuimica ? <ChemistryCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Química'} /> :
+                 esTorque ? <TorqueCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Torque'} /> :
+                 esVolumen ? <VolumeCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Volumen'} /> :
+                 esMasa ? <MassCalibrationForm itemId={selectedItem.id} orderId={id as string} magnitud={magnitud || 'Masa'} /> :
+                 <DynamicCalibrationForm itemId={selectedItem.id} magnitud={magnitud || 'Generico'} configJson={configJson} />}
             </div>
         )
     }
@@ -374,15 +385,9 @@ export default function Page({ params }: { params: { id: string } }) {
                                         <td className="p-2">
                                             <select className="w-full border border-slate-200 rounded p-0.5 text-[9px] uppercase bg-slate-50 focus:bg-white outline-none" value={item.magnitud || ''} onChange={(e) => updateItemMagnitude(item.id, e.target.value)}>
                                                 <option value="">-- Seleccionar --</option>
-                                                <option value="Dureza">Dureza</option>
-                                                <option value="Eléctrica">Eléctrica</option>
-                                                <option value="Frecuencia">Frecuencia</option>
-                                                <option value="Masa">Masa</option>
-                                                <option value="Óptica">Óptica</option>
-                                                <option value="Química">Química</option>
-                                                <option value="Tiempo">Tiempo</option>
-                                                <option value="Torque">Torque</option>
-                                                <option value="Volumen">Volumen</option>
+                                                {magnitudesOptions.map(m => (
+                                                    <option key={m.id} value={m.nombre}>{m.nombre}</option>
+                                                ))}
                                             </select>
                                         </td>
                                         <td className="p-2 text-center no-print">

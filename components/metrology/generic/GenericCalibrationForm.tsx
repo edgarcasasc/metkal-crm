@@ -8,7 +8,6 @@ import { calculateMean, calculateStdDev, calculateUncertainty, calculateAverageE
 export default function GenericCalibrationForm({ itemId, magnitud }: { itemId: number, magnitud: string }) {
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
-  const [patterns, setPatterns] = useState<any[]>([])
   
   // Entorno
   const [env, setEnv] = useState({
@@ -31,11 +30,6 @@ export default function GenericCalibrationForm({ itemId, magnitud }: { itemId: n
   const [points, setPoints] = useState<any[]>([])
 
   useEffect(() => {
-    async function loadPatterns() {
-        const { data } = await supabase.from('patterns').select('*').eq('estatus', 'Activo')
-        setPatterns(data || [])
-    }
-    loadPatterns()
     // Iniciar con 3 filas vacías
     addPoint(); addPoint(); addPoint();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,8 +89,7 @@ export default function GenericCalibrationForm({ itemId, magnitud }: { itemId: n
   }
 
   const handleSave = async () => {
-      if (!env.patron_id) return alert("Selecciona el patrón utilizado")
-      
+            
       setLoading(true)
       try {
           const { error: resError } = await supabase.from('calibration_results').insert({
@@ -106,8 +99,7 @@ export default function GenericCalibrationForm({ itemId, magnitud }: { itemId: n
               humedad_inicial: env.humedad_inicial,
               humedad_final: env.humedad_final,
               presion_atmosferica: env.presion_atmosferica,
-              patron_id: Number(env.patron_id),
-              datos_calibracion: {
+                            datos_calibracion: {
                   tipo: 'GENERICO',
                   magnitud_real: magnitud,
                   specs,
@@ -156,11 +148,10 @@ export default function GenericCalibrationForm({ itemId, magnitud }: { itemId: n
                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Resolución</label><input type="number" className="w-full border rounded p-1.5 text-sm" value={specs.resolucion} onChange={(e) => setSpecs({...specs, resolucion: parseFloat(e.target.value)})} /></div>
                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Tolerancia (±)</label><input type="number" className="w-full border rounded p-1.5 text-sm font-bold text-slate-600" value={specs.tolerancia} onChange={(e) => setSpecs({...specs, tolerancia: parseFloat(e.target.value)})} /></div>
                 <div>
-                     <label className="block text-[9px] font-bold text-slate-400 uppercase">Patrón</label>
-                     <select className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs outline-none" value={env.patron_id} onChange={(e) => setEnv({...env, patron_id: e.target.value})}>
-                        <option value="">-- Seleccionar --</option>
-                        {patterns.map(p => <option key={p.id} value={p.id}>{p.clave} - {p.marca}</option>)}
-                     </select>
+                     <label className="block text-[10px] font-bold text-slate-400 uppercase">Magnitud</label>
+                     <div className="w-full bg-slate-100 text-slate-600 border border-slate-300 rounded p-1.5 font-bold text-[10px] uppercase">
+                         {magnitud}
+                     </div>
                 </div>
             </div>
 

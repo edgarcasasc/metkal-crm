@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Save, Plus, Trash2, Loader2, FileText, Scale } from 'lucide-react'
-
 // Utilidades Estadísticas
 function calculateStdDev(arr: number[]) {
     if (!arr || arr.length < 2) return 0;
@@ -54,10 +53,9 @@ interface ExactitudPoint {
     error: number; uC: number; u_expandida: number;
 }
 
-export default function MassCalibrationForm({ itemId, orderId }: { itemId: number, orderId?: string }) {
+export default function MassCalibrationForm({ itemId, orderId, magnitud }: { itemId: number, orderId?: string, magnitud: string }) {
     const supabase = createClient()
     const [loading, setLoading] = useState(false)
-    const [patterns, setPatterns] = useState<any[]>([])
 
     // Ambiente
     const [env, setEnv] = useState({
@@ -129,13 +127,7 @@ export default function MassCalibrationForm({ itemId, orderId }: { itemId: numbe
 
     const [anexo, setAnexo] = useState("")
 
-    useEffect(() => {
-        async function loadPatterns() {
-            const { data } = await supabase.from('patterns').select('*').eq('estatus', 'Activo')
-            setPatterns(data || [])
-        }
-        loadPatterns()
-    }, [])
+
 
     const handlePointChange = (idx: number, field: keyof ExactitudPoint, value: string) => {
         setPoints(prev => {
@@ -239,7 +231,13 @@ export default function MassCalibrationForm({ itemId, orderId }: { itemId: numbe
 
             <div className="p-4 space-y-8">
                 {/* BLOQUE 1: DATOS DEL INSTRUMENTO Y AMBIENTE */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase">Magnitud</label>
+                     <div className="w-full bg-slate-100 text-slate-600 border border-slate-300 rounded p-1.5 font-bold text-[10px] uppercase">
+                         {magnitud}
+                     </div>
+                    </div>
                     <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase">Clase de Exactitud</label>
                         <select className="w-full bg-white border border-slate-300 rounded p-1.5 outline-none font-bold text-indigo-700" 

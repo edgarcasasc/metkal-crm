@@ -68,7 +68,7 @@ export default function DashboardPage() {
           .limit(5)
 
         setActiveOrdersList(ordersData || [])
-      })(), 10000)
+      })(), 30000)
 
     } catch (error) {
       console.error("Error dashboard:", error)

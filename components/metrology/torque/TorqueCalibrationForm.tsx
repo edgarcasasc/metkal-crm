@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Save, Plus, Trash2, Loader2, FileText, Wrench } from 'lucide-react'
-
 function calculateMean(arr: number[]) {
     if (!arr || arr.length === 0) return 0;
     const sum = arr.reduce((a, b) => a + b, 0);
@@ -33,10 +32,9 @@ interface TorqueParameter {
     puntos: TorquePoint[];
 }
 
-export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: number, orderId?: string }) {
+export default function TorqueCalibrationForm({ itemId, orderId, magnitud }: { itemId: number, orderId?: string, magnitud: string }) {
     const supabase = createClient()
     const [loading, setLoading] = useState(false)
-    const [patterns, setPatterns] = useState<any[]>([])
     
     // Entorno
     const [env, setEnv] = useState({
@@ -89,13 +87,7 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
     // Anexo II
     const [anexo, setAnexo] = useState("")
 
-    useEffect(() => {
-        async function loadPatterns() {
-            const { data } = await supabase.from('patterns').select('*').eq('estatus', 'Activo')
-            setPatterns(data || [])
-        }
-        loadPatterns()
-    }, [])
+
 
     const updateConfig = (field: string, value: any) => {
         const newConfig = { ...config, [field]: value }
@@ -170,8 +162,7 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
     }
 
     const handleSave = async () => {
-        if (!env.patron_id) return alert("Selecciona el patrón utilizado")
-        
+                
         setLoading(true)
         try {
             const { error: resError } = await supabase.from('calibration_results').insert({
@@ -180,8 +171,7 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
                 temp_final: env.temp_final,
                 humedad_inicial: env.humedad_inicial,
                 humedad_final: env.humedad_final,
-                patron_id: Number(env.patron_id),
-                observaciones: anexo,
+                                observaciones: anexo,
                 datos_calibracion: {
                     tipo: 'TORQUE',
                     configuracion: config,
@@ -220,22 +210,21 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
             <div className="p-4 space-y-8">
                 {/* AMBIENTE */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Patrón Utilizado</label>
-                         <select className="w-full bg-white border border-slate-300 rounded p-1.5 outline-none font-bold" value={env.patron_id} onChange={(e) => setEnv({...env, patron_id: e.target.value})}>
-                            <option value="">-- Seleccionar --</option>
-                            {patterns.map(p => <option key={p.id} value={p.id}>{p.clave} - {p.marca}</option>)}
-                         </select>
+                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Magnitud</label>
+                     <div className="w-full bg-slate-100 text-slate-600 border border-slate-300 rounded p-1.5 font-bold text-[10px] uppercase">
+                         {magnitud}
+                     </div>
                     </div>
                     <div><span className="font-bold block text-[10px] uppercase text-slate-400">Temp Inicial / Final (°C)</span>
                         <div className="flex gap-2 mt-1">
-                            <input type="number" value={env.temp_inicial} onChange={e=>setEnv({...env, temp_inicial: +e.target.value})} className="border rounded p-1 w-full text-center"/>
-                            <input type="number" value={env.temp_final} onChange={e=>setEnv({...env, temp_final: +e.target.value})} className="border rounded p-1 w-full text-center"/>
+                            <input type="number" value={Number.isNaN(env.temp_inicial) ? "" : env.temp_inicial} onChange={e=>setEnv({...env, temp_inicial: parseFloat(e.target.value)})} className="border rounded p-1 w-full text-center"/>
+                            <input type="number" value={Number.isNaN(env.temp_final) ? "" : env.temp_final} onChange={e=>setEnv({...env, temp_final: parseFloat(e.target.value)})} className="border rounded p-1 w-full text-center"/>
                         </div>
                     </div>
                     <div><span className="font-bold block text-[10px] uppercase text-slate-400">Humedad Inicial / Final (%)</span>
                         <div className="flex gap-2 mt-1">
-                            <input type="number" value={env.humedad_inicial} onChange={e=>setEnv({...env, humedad_inicial: +e.target.value})} className="border rounded p-1 w-full text-center"/>
-                            <input type="number" value={env.humedad_final} onChange={e=>setEnv({...env, humedad_final: +e.target.value})} className="border rounded p-1 w-full text-center"/>
+                            <input type="number" value={Number.isNaN(env.humedad_inicial) ? "" : env.humedad_inicial} onChange={e=>setEnv({...env, humedad_inicial: parseFloat(e.target.value)})} className="border rounded p-1 w-full text-center"/>
+                            <input type="number" value={Number.isNaN(env.humedad_final) ? "" : env.humedad_final} onChange={e=>setEnv({...env, humedad_final: parseFloat(e.target.value)})} className="border rounded p-1 w-full text-center"/>
                         </div>
                     </div>
                 </div>
@@ -259,17 +248,17 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
                                         <div className="flex border-b border-black">
                                             <div className="w-1/3 border-r border-black p-1 bg-slate-50">INTERVALO</div>
                                             <div className="w-1/3 border-r border-black bg-yellow-200">
-                                                <input type="number" className="w-full h-full text-center bg-transparent outline-none" value={config.intervalo_min} onChange={(e) => updateConfig('intervalo_min', parseFloat(e.target.value))} />
+                                                <input type="number" className="w-full h-full text-center bg-transparent outline-none" value={Number.isNaN(config.intervalo_min) ? "" : config.intervalo_min} onChange={(e) => updateConfig('intervalo_min', parseFloat(e.target.value))} />
                                             </div>
                                             <div className="w-1/6 border-r border-black p-1 text-center bg-slate-50">A</div>
                                             <div className="w-1/3 bg-yellow-200">
-                                                <input type="number" className="w-full h-full text-center bg-transparent outline-none" value={config.intervalo_max} onChange={(e) => updateConfig('intervalo_max', parseFloat(e.target.value))} />
+                                                <input type="number" className="w-full h-full text-center bg-transparent outline-none" value={Number.isNaN(config.intervalo_max) ? "" : config.intervalo_max} onChange={(e) => updateConfig('intervalo_max', parseFloat(e.target.value))} />
                                             </div>
                                         </div>
                                         <div className="flex border-b border-black">
                                             <div className="w-1/3 border-r border-black p-1 bg-slate-50">RESOLUCION</div>
                                             <div className="w-2/3 bg-yellow-200 border-r border-black">
-                                                <input type="number" className="w-full h-full text-center bg-transparent outline-none" value={config.resolucion} onChange={(e) => updateConfig('resolucion', parseFloat(e.target.value))} step="0.1"/>
+                                                <input type="number" className="w-full h-full text-center bg-transparent outline-none" value={Number.isNaN(config.resolucion) ? "" : config.resolucion} onChange={(e) => updateConfig('resolucion', parseFloat(e.target.value))} step="0.1"/>
                                             </div>
                                         </div>
                                         <div className="flex border-b border-black">
@@ -348,7 +337,7 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
                                                     
                                                     {/* TOL DE PATRÓN DINÁMICA */}
                                                     <td className="border-r border-black p-0 bg-yellow-100">
-                                                        <input type="number" className="w-16 text-center bg-transparent outline-none font-bold text-blue-700" value={row.tol_patron} onChange={e => handlePointChange(pIdx, i, 'tol_patron', parseFloat(e.target.value))} step="0.0001"/>
+                                                        <input type="number" className="w-16 text-center bg-transparent outline-none font-bold text-blue-700" value={Number.isNaN(row.tol_patron) ? "" : row.tol_patron} onChange={e => handlePointChange(pIdx, i, 'tol_patron', parseFloat(e.target.value))} step="0.0001"/>
                                                     </td>
                                                     
                                                     <td className="border-r border-black p-1 text-slate-600">{row.uB_patron.toFixed(4)}</td>
@@ -361,7 +350,7 @@ export default function TorqueCalibrationForm({ itemId, orderId }: { itemId: num
                                                     
                                                     {/* CMC DINÁMICA - La que se usa para error + U */}
                                                     <td className="border-r border-black p-0 bg-yellow-100">
-                                                        <input type="number" className="w-16 text-center bg-transparent outline-none font-bold text-blue-700" value={row.cmc} onChange={e => handlePointChange(pIdx, i, 'cmc', parseFloat(e.target.value))} step="0.01"/>
+                                                        <input type="number" className="w-16 text-center bg-transparent outline-none font-bold text-blue-700" value={Number.isNaN(row.cmc) ? "" : row.cmc} onChange={e => handlePointChange(pIdx, i, 'cmc', parseFloat(e.target.value))} step="0.01"/>
                                                     </td>
 
                                                     <td className="p-1 font-bold text-red-600">{row.error.toFixed(3)}</td>

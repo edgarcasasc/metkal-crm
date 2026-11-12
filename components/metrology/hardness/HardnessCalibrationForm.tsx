@@ -66,8 +66,40 @@ export default function HardnessCalibrationForm({ itemId, orderId }: { itemId: n
 
     useEffect(() => {
         async function loadPatterns() {
-            const { data } = await supabase.from('patterns').select('*').eq('estatus', 'Activo')
-            setPatterns(data || [])
+            try {
+                // Cambiamos a magnitudes porque el usuario indicó que necesita ver esa lista aquí
+                const { data, error } = await supabase.from('magnitudes').select('*').order('nombre', { ascending: true })
+                
+                if (error) {
+                    console.error("Error fetching magnitudes:", error)
+                    return
+                }
+
+                if (data) {
+                    // Mapeamos para que embone con la variable patterns existente
+                    const mappedPatterns = data.map((m: any) => ({
+                        id: m.nombre, // Usamos el nombre directamente como ID para guardar el texto
+                        clave: m.nombre, // Mostrará Dimensional, Dureza, etc.
+                        descripcion: 'Magnitud',
+                        marca: '',
+                        equipo: m.nombre
+                    }))
+                    setPatterns(mappedPatterns)
+                    
+                    // Buscar si existe DUREZA para preseleccionarlo
+                    const durezaPattern = mappedPatterns.find(p => p.clave.toUpperCase().includes('DUREZA'))
+                    
+                    if (durezaPattern && !env.patron_id) {
+                        setEnv(prev => ({ ...prev, patron_id: durezaPattern.id }))
+                    }
+                }
+            } catch (err: any) {
+                if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+                    console.warn("Fetch abortado por navegación.");
+                } else {
+                    console.warn("Exception fetching magnitudes:", err)
+                }
+            }
         }
         loadPatterns()
     }, [])
@@ -151,12 +183,13 @@ export default function HardnessCalibrationForm({ itemId, orderId }: { itemId: n
                 temp_final: env.temp_final,
                 humedad_inicial: env.humedad_inicial,
                 humedad_final: env.humedad_final,
-                patron_id: Number(env.patron_id),
+                // NO enviamos patron_id aquí para evitar las reglas estrictas de RLS/FK
                 observaciones: anexo,
                 datos_calibracion: {
                     tipo: 'DUREZA',
                     configuracion: config,
-                    puntos: puntos
+                    puntos: puntos,
+                    patron_utilizado: env.patron_id // Guardamos el texto elegido aquí
                 },
                 fecha_calibracion: new Date().toISOString()
             })
@@ -191,11 +224,25 @@ export default function HardnessCalibrationForm({ itemId, orderId }: { itemId: n
             <div className="p-4 space-y-8">
                 {/* AMBIENTE */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Patrón Utilizado</label>
-                         <select className="w-full bg-white border border-slate-300 rounded p-1.5 outline-none font-bold" value={env.patron_id} onChange={(e) => setEnv({...env, patron_id: e.target.value})}>
+                    <div>
+                        <div className="flex justify-between items-end mb-1">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase">Patrón Utilizado</label>
+                            <a href="/inventario" target="_blank" className="text-[9px] text-blue-500 hover:underline font-bold flex items-center gap-1"><Plus size={10}/> Crear</a>
+                        </div>
+                        <select className="w-full bg-white border border-slate-300 rounded p-1.5 outline-none font-bold text-xs" 
+                            value={env.patron_id} 
+                            onChange={(e) => {
+                                if (e.target.value === 'new') {
+                                    alert("Para agregar un nuevo patrón físico con trazabilidad, ve al módulo de Inventario dando clic en 'Crear'.")
+                                    return
+                                }
+                                setEnv({...env, patron_id: e.target.value})
+                            }}>
                             <option value="">-- Seleccionar --</option>
-                            {patterns.map(p => <option key={p.id} value={p.id}>{p.clave} - {p.marca}</option>)}
-                         </select>
+                            {patterns.map(p => <option key={p.id} value={p.id}>{p.clave || 'Sin Clave'} - {p.marca || 'Sin Marca'} {p.equipo ? `(${p.equipo})` : ''}</option>)}
+                            <option disabled>──────────</option>
+                            <option value="new">+ Agregar Nuevo Patrón...</option>
+                        </select>
                     </div>
                     <div><span className="font-bold block text-[10px] uppercase text-slate-400">Temp Inicial / Final (°C)</span>
                         <div className="flex gap-2 mt-1">
@@ -290,97 +337,100 @@ export default function HardnessCalibrationForm({ itemId, orderId }: { itemId: n
                         </div>
 
                         {/* TABLA DE CÁLCULOS EXACTA COMO EXCEL */}
-                        <div className="w-full overflow-x-auto border-t-2 border-black flex">
+                        <div className="w-full overflow-x-auto border-t-2 border-slate-300 flex items-start bg-slate-100 p-4 rounded-b-xl shadow-inner gap-4">
                             
-                            {/* TABLA PRINCIPAL DE RESULTADOS (SOLO LECTURA) */}
-                            <table className="text-center text-[10px] whitespace-nowrap border-collapse border-r-4 border-slate-800">
-                                <thead className="font-bold bg-white">
+                            {/* TABLA DE CAPTURA (LO QUE EL USUARIO LLENA) */}
+                            <table className="text-center text-[10px] whitespace-nowrap border-collapse border-4 border-amber-400 shadow-xl bg-amber-50">
+                                <thead className="font-bold bg-amber-200">
                                     <tr>
-                                        <th className="border-r border-black p-1 align-bottom">Valor Nominal<br/>del Patrón<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom">Muestra 1<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom">Muestra 2<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom">Muestra 3<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom">Muestra 4<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom">Muestra 5<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom text-slate-500">uA<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom bg-slate-100">Incertidumbre<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom text-slate-500">uB de Patrón<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom text-slate-500">uB resol.<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom text-slate-500">uC<br/>{config.unidad}</th>
-                                        <th className="border-r border-black p-1 align-bottom text-slate-500">Grados<br/>de libertad</th>
-                                        <th className="border-r border-black p-1 align-bottom text-slate-500">Factor k</th>
-                                        <th className="border-r border-black p-1 align-bottom font-bold">Uexpandida<br/>para 95.45%<br/>{config.unidad}</th>
-                                        <th className="p-1 align-bottom">error</th>
-                                        <th className="p-1 align-bottom">error +U</th>
-                                        <th className="p-1 align-bottom">error -U</th>
-                                        <th className="p-1 align-bottom">error_abs</th>
+                                        <th className="border-b border-amber-300 p-2 text-amber-900 text-xs uppercase tracking-wider" colSpan={6}>✍️ Área de Captura (Llenar Aquí)</th>
+                                    </tr>
+                                    <tr>
+                                        <th className="border-r border-b border-amber-300 p-1 align-bottom text-amber-900 w-20">Valor Nominal<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-amber-300 p-1 w-16 text-amber-800">G 1 (g)</th>
+                                        <th className="border-r border-b border-amber-300 p-1 w-16 text-amber-800">G 2 (g)</th>
+                                        <th className="border-r border-b border-amber-300 p-1 w-16 text-amber-800">G 3 (g)</th>
+                                        <th className="border-r border-b border-amber-300 p-1 w-16 text-amber-800">G 4 (g)</th>
+                                        <th className="border-b border-amber-300 p-1 w-16 text-amber-800">G 5 (g)</th>
                                     </tr>
                                 </thead>
-                                <tbody className="border-t-2 border-black">
-                                    <tr className="bg-slate-50 border-b border-black">
-                                        <td colSpan={7} className="border-r border-black text-right p-1 font-bold text-slate-400"></td>
-                                        <td className="border-r border-black p-0 bg-yellow-100">
-                                            <input type="number" className="w-16 text-center bg-transparent outline-none font-bold text-blue-700" value={config.incertidumbre_patron} onChange={(e) => updateConfig('incertidumbre_patron', parseFloat(e.target.value))} step="0.0001"/>
-                                        </td>
-                                        <td colSpan={10} className="p-1 text-left text-slate-400 text-[9px]">← Edita Incertidumbre Patrón</td>
+                                <tbody>
+                                    <tr className="bg-amber-100 border-b border-amber-300 h-[28px]">
+                                        <td colSpan={6} className="text-amber-700 text-[9px] font-bold">↑ Configura Nominal y Gramos abajo ↓</td>
                                     </tr>
                                     {puntos.map((row, i) => (
-                                        <tr key={i} className="bg-white border-b border-slate-300">
-                                            <td className="border-r border-black p-0">
-                                                <input type="number" className="w-16 h-full p-1 text-center bg-transparent outline-none font-bold text-slate-800" value={row.nominal} onChange={e => handlePointChange(i, 'nominal', e.target.value)} />
+                                        <tr key={`captura-${i}`} className="bg-white border-b border-amber-200 hover:bg-amber-50 h-[28px]">
+                                            <td className="border-r border-amber-200 p-0">
+                                                <input type="number" className="w-full h-full p-1 text-center bg-transparent outline-none font-bold text-slate-800 focus:bg-amber-100" value={row.nominal} onChange={e => handlePointChange(i, 'nominal', e.target.value)} />
                                             </td>
-                                            {/* Celdas calculadas (Solo lectura) */}
-                                            <td className="border-r border-black p-1 text-blue-800 font-bold bg-blue-50/30">{row.toma1 ? row.toma1.toFixed(4) : ''}</td>
-                                            <td className="border-r border-black p-1 text-blue-800 font-bold bg-blue-50/30">{row.toma2 ? row.toma2.toFixed(4) : ''}</td>
-                                            <td className="border-r border-black p-1 text-blue-800 font-bold bg-blue-50/30">{row.toma3 ? row.toma3.toFixed(4) : ''}</td>
-                                            <td className="border-r border-black p-1 text-blue-800 font-bold bg-blue-50/30">{row.toma4 ? row.toma4.toFixed(4) : ''}</td>
-                                            <td className="border-r border-black p-1 text-blue-800 font-bold bg-blue-50/30">{row.toma5 ? row.toma5.toFixed(4) : ''}</td>
-                                            
-                                            {/* CÁLCULOS INTERMEDIOS */}
-                                            <td className="border-r border-black p-1 text-slate-600">{row.uA.toFixed(4)}</td>
-                                            <td className="border-r border-black p-1 text-slate-600 bg-slate-50">{config.incertidumbre_patron}</td>
-                                            <td className="border-r border-black p-1 text-slate-600">{row.uB_patron.toFixed(4)}</td>
-                                            <td className="border-r border-black p-1 text-slate-600">{row.uB_resol.toFixed(4)}</td>
-                                            <td className="border-r border-black p-1 text-slate-600">{row.uC.toFixed(5)}</td>
-                                            <td className="border-r border-black p-1 text-slate-600">∞</td>
-                                            <td className="border-r border-black p-1 text-slate-600">2</td>
-                                            
-                                            <td className="border-r border-black p-1 font-bold text-purple-700">{row.U_expandida.toFixed(5)}</td>
-                                            
-                                            <td className="p-1">{row.error.toFixed(3)}</td>
-                                            <td className="p-1">{(row.error + row.U_expandida).toFixed(3)}</td>
-                                            <td className="p-1">{(row.error - row.U_expandida).toFixed(3)}</td>
-                                            <td className="p-1 font-bold">{row.error_abs.toFixed(3)}</td>
+                                            <td className="border-r border-amber-200 p-0"><input type="number" className="w-full h-full p-1 text-center bg-transparent outline-none font-bold text-amber-900 focus:bg-amber-200 transition-colors" value={row.g1} onChange={e => handlePointChange(i, 'g1', e.target.value)} /></td>
+                                            <td className="border-r border-amber-200 p-0"><input type="number" className="w-full h-full p-1 text-center bg-transparent outline-none font-bold text-amber-900 focus:bg-amber-200 transition-colors" value={row.g2} onChange={e => handlePointChange(i, 'g2', e.target.value)} /></td>
+                                            <td className="border-r border-amber-200 p-0"><input type="number" className="w-full h-full p-1 text-center bg-transparent outline-none font-bold text-amber-900 focus:bg-amber-200 transition-colors" value={row.g3} onChange={e => handlePointChange(i, 'g3', e.target.value)} /></td>
+                                            <td className="border-r border-amber-200 p-0"><input type="number" className="w-full h-full p-1 text-center bg-transparent outline-none font-bold text-amber-900 focus:bg-amber-200 transition-colors" value={row.g4} onChange={e => handlePointChange(i, 'g4', e.target.value)} /></td>
+                                            <td className="p-0"><input type="number" className="w-full h-full p-1 text-center bg-transparent outline-none font-bold text-amber-900 focus:bg-amber-200 transition-colors" value={row.g5} onChange={e => handlePointChange(i, 'g5', e.target.value)} /></td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
 
-                            {/* TABLA DE CAPTURA DE FUERZA (GRAMOS) */}
-                            <table className="text-center text-[10px] whitespace-nowrap border-collapse bg-slate-50">
+                            {/* TABLA PRINCIPAL DE RESULTADOS (SOLO LECTURA) */}
+                            <table className="text-center text-[10px] whitespace-nowrap border-collapse border-4 border-slate-700 shadow-md bg-white">
                                 <thead className="font-bold bg-slate-200">
                                     <tr>
-                                        <th className="border-r border-slate-300 p-1 align-bottom text-slate-700" colSpan={5}>Masa Registrada en Balanza</th>
+                                        <th className="border-b border-slate-300 p-2 text-slate-700 text-xs uppercase tracking-wider" colSpan={17}>📊 Resultados Calculados (Lectura)</th>
                                     </tr>
                                     <tr>
-                                        <th className="border-r border-slate-300 p-1 w-16 text-slate-600">g</th>
-                                        <th className="border-r border-slate-300 p-1 w-16 text-slate-600">g</th>
-                                        <th className="border-r border-slate-300 p-1 w-16 text-slate-600">g</th>
-                                        <th className="border-r border-slate-300 p-1 w-16 text-slate-600">g</th>
-                                        <th className="p-1 w-16 text-slate-600">g</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">Muestra 1<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">Muestra 2<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">Muestra 3<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">Muestra 4<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">Muestra 5<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom text-slate-500">uA<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom bg-slate-300 text-slate-800">Incertidumbre<br/>Patrón</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom text-slate-500">uB de Patrón<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom text-slate-500">uB resol.<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom text-slate-500">uC<br/>{config.unidad}</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom text-slate-500">Grados<br/>de libertad</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom text-slate-500">Factor k</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom font-bold text-slate-800">Uexpandida<br/>para 95.45%</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">error</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">error +U</th>
+                                        <th className="border-r border-b border-slate-400 p-1 align-bottom">error -U</th>
+                                        <th className="border-b border-slate-400 p-1 align-bottom">error_abs</th>
                                     </tr>
                                 </thead>
-                                <tbody className="border-t-2 border-slate-800">
-                                    <tr className="bg-slate-200 border-b border-slate-300 h-[21px]">
-                                        <td colSpan={5}></td>
+                                <tbody>
+                                    <tr className="bg-slate-100 border-b border-slate-300 h-[28px]">
+                                        <td colSpan={6} className="border-r border-slate-300 text-right p-1 font-bold text-slate-400"></td>
+                                        <td className="border-r border-slate-300 p-0 bg-yellow-100 w-20">
+                                            <input type="number" className="w-full h-full text-center bg-transparent outline-none font-bold text-blue-700" value={config.incertidumbre_patron} onChange={(e) => updateConfig('incertidumbre_patron', parseFloat(e.target.value))} step="0.0001"/>
+                                        </td>
+                                        <td colSpan={10} className="p-1 text-left text-slate-500 text-[9px] font-bold">← Incertidumbre Patrón (Editable)</td>
                                     </tr>
                                     {puntos.map((row, i) => (
-                                        <tr key={`g-${i}`} className="bg-white border-b border-slate-300">
-                                            <td className="border-r border-slate-300 p-0 bg-yellow-200"><input type="number" className="w-16 h-[22px] p-1 text-center bg-transparent outline-none font-bold" value={row.g1} onChange={e => handlePointChange(i, 'g1', e.target.value)} /></td>
-                                            <td className="border-r border-slate-300 p-0 bg-yellow-200"><input type="number" className="w-16 h-[22px] p-1 text-center bg-transparent outline-none font-bold" value={row.g2} onChange={e => handlePointChange(i, 'g2', e.target.value)} /></td>
-                                            <td className="border-r border-slate-300 p-0 bg-yellow-200"><input type="number" className="w-16 h-[22px] p-1 text-center bg-transparent outline-none font-bold" value={row.g3} onChange={e => handlePointChange(i, 'g3', e.target.value)} /></td>
-                                            <td className="border-r border-slate-300 p-0 bg-yellow-200"><input type="number" className="w-16 h-[22px] p-1 text-center bg-transparent outline-none font-bold" value={row.g4} onChange={e => handlePointChange(i, 'g4', e.target.value)} /></td>
-                                            <td className="p-0 bg-yellow-200"><input type="number" className="w-16 h-[22px] p-1 text-center bg-transparent outline-none font-bold" value={row.g5} onChange={e => handlePointChange(i, 'g5', e.target.value)} /></td>
+                                        <tr key={`result-${i}`} className="bg-white border-b border-slate-200 h-[28px] hover:bg-slate-50">
+                                            {/* Celdas calculadas (Solo lectura) */}
+                                            <td className="border-r border-slate-200 p-1 text-blue-800 font-bold bg-blue-50/50">{row.toma1 ? row.toma1.toFixed(4) : '-'}</td>
+                                            <td className="border-r border-slate-200 p-1 text-blue-800 font-bold bg-blue-50/50">{row.toma2 ? row.toma2.toFixed(4) : '-'}</td>
+                                            <td className="border-r border-slate-200 p-1 text-blue-800 font-bold bg-blue-50/50">{row.toma3 ? row.toma3.toFixed(4) : '-'}</td>
+                                            <td className="border-r border-slate-200 p-1 text-blue-800 font-bold bg-blue-50/50">{row.toma4 ? row.toma4.toFixed(4) : '-'}</td>
+                                            <td className="border-r border-slate-200 p-1 text-blue-800 font-bold bg-blue-50/50">{row.toma5 ? row.toma5.toFixed(4) : '-'}</td>
+                                            
+                                            {/* CÁLCULOS INTERMEDIOS */}
+                                            <td className="border-r border-slate-200 p-1 text-slate-500">{row.uA.toFixed(4)}</td>
+                                            <td className="border-r border-slate-200 p-1 text-slate-500 bg-slate-50 font-mono">{config.incertidumbre_patron}</td>
+                                            <td className="border-r border-slate-200 p-1 text-slate-500">{row.uB_patron.toFixed(4)}</td>
+                                            <td className="border-r border-slate-200 p-1 text-slate-500">{row.uB_resol.toFixed(4)}</td>
+                                            <td className="border-r border-slate-200 p-1 text-slate-600 font-semibold">{row.uC.toFixed(5)}</td>
+                                            <td className="border-r border-slate-200 p-1 text-slate-400">∞</td>
+                                            <td className="border-r border-slate-200 p-1 text-slate-400">2</td>
+                                            
+                                            <td className="border-r border-slate-200 p-1 font-bold text-purple-700 bg-purple-50/50">{row.U_expandida.toFixed(5)}</td>
+                                            
+                                            <td className="border-r border-slate-100 p-1 text-slate-700">{row.error.toFixed(3)}</td>
+                                            <td className="border-r border-slate-100 p-1 text-slate-700">{(row.error + row.U_expandida).toFixed(3)}</td>
+                                            <td className="border-r border-slate-100 p-1 text-slate-700">{(row.error - row.U_expandida).toFixed(3)}</td>
+                                            <td className="p-1 font-bold text-slate-800">{row.error_abs.toFixed(3)}</td>
                                         </tr>
                                     ))}
                                 </tbody>

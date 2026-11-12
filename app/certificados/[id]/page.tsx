@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, AlertTriangle, Flame, Gauge } from 'lucide-react'
+import { Printer, AlertTriangle, FileText } from 'lucide-react'
 import QRCode from "react-qr-code"
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, XAxis, YAxis } from 'recharts'
 
 export default function CertificatePage() {
   const { id } = useParams()
@@ -125,7 +125,15 @@ export default function CertificatePage() {
   if (errorMsg) return <div className="h-screen flex flex-col items-center justify-center text-red-500 font-bold p-10"><AlertTriangle size={48}/> {errorMsg}</div>
 
   // VARIABLES
-  const certNumber = `C-${new Date().getFullYear()}-${data?.id?.toString().padStart(6, '0')}`
+  let certNumber = data?.certificado;
+  if (!certNumber && data?.order?.folio) {
+      const numMatch = data.order.folio.match(/\d+$/);
+      const orderNum = numMatch ? numMatch[0] : '0000';
+      certNumber = `C-${orderNum}-${data.id}`;
+  }
+  if (!certNumber) {
+      certNumber = `C-${new Date().getFullYear()}-${data?.id?.toString().padStart(6, '0')}`;
+  }
   const calibrationDate = result?.fecha_calibracion ? new Date(result.fecha_calibracion).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) : "PENDIENTE"
   const nextDate = result?.fecha_calibracion ? new Date(new Date(result.fecha_calibracion).setFullYear(new Date(result.fecha_calibracion).getFullYear() + 1)).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) : "PENDIENTE"
   
@@ -200,7 +208,11 @@ export default function CertificatePage() {
 
   const puntos = finalResult?.datos_calibracion?.puntos || []
   const specs = finalResult?.datos_calibracion?.specs || {}
-  const tipoCalibracion = data?.magnitud?.toUpperCase() || finalResult?.datos_calibracion?.tipo?.toUpperCase() || 'PRESION' // Detectamos tipo (por defecto Presion si no existe la etiqueta)
+  const normalizeMag = (str?: string) => {
+    if (!str) return '';
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+  }
+  const tipoCalibracion = normalizeMag(data?.magnitud || finalResult?.datos_calibracion?.tipo || 'PRESION')
 
   return (
     <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center print:p-0 print:bg-white text-slate-900">
@@ -223,6 +235,9 @@ export default function CertificatePage() {
 
       {/* TOOLBAR */}
       <div className="no-print fixed top-4 right-4 flex gap-2 z-50">
+        <a href={`/resultados/${id}`} target="_blank" rel="noopener noreferrer" className="bg-emerald-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-bold text-xs hover:bg-emerald-700 transition">
+            <FileText size={16}/> VER RESULTADOS
+        </a>
         <button onClick={() => window.print()} className="bg-slate-900 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-bold text-xs hover:bg-black transition">
             <Printer size={16}/> IMPRIMIR
         </button>
@@ -302,6 +317,10 @@ export default function CertificatePage() {
                     <div className="cert-value">{new Date(data.order?.created_at).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
                 </div>
                 <div className="flex justify-between">
+                    <div className="flex items-center gap-1.5">
+                        <QRCode value={qrUrl} size={30} style={{ height: "30px", width: "30px" }} viewBox={`0 0 256 256`}/>
+                        <span className="text-[6.5px] text-slate-500 font-bold uppercase leading-tight">Verificar<br/>Online</span>
+                    </div>
                     <div className="cert-label">Página (Page):</div>
                     <div className="cert-value">1 de 2</div>
                 </div>
@@ -833,7 +852,15 @@ export default function CertificatePage() {
                             {puntos.map((pt: any, i: number) => {
                              if (tipoCalibracion === 'TEMPERATURA') {
                                  // ...
-                                 return null
+                                 return (
+                                    <tr key={i} className="border-b border-slate-200">
+                                        <td className="py-1 border-x border-slate-200 font-bold">{pt.setPoint || pt.nominal} {specs.unidad || '°C'}</td>
+                                        <td className="py-1 border-x border-slate-200">{pt.patron}</td>
+                                        <td className="py-1 border-x border-slate-200">{pt.instrumento || pt.lectura}</td>
+                                        <td className="py-1 border-x border-slate-200 font-bold">{Number(pt.error) > 0 ? '+' : ''}{pt.error}</td>
+                                        <td className="py-1 border-x border-slate-200">± {pt.incertidumbre || specs.resolucion || 0.01}</td>
+                                    </tr>
+                                 )
                              } else if (tipoCalibracion === 'DIMENSIONAL') {
                                  return null
                              } else if (tipoCalibracion === 'GENERICO') {

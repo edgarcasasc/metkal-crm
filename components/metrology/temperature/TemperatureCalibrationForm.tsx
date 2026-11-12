@@ -3,11 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Save, Thermometer, CheckCircle2, XCircle, RefreshCcw, Loader2, AlertTriangle, Flame } from 'lucide-react'
-
 export default function TemperatureCalibrationForm({ itemId, orderId }: { itemId: number, orderId: string }) {
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
-  const [patterns, setPatterns] = useState<any[]>([])
   
   // Estado del Entorno
   const [env, setEnv] = useState({
@@ -30,13 +28,6 @@ export default function TemperatureCalibrationForm({ itemId, orderId }: { itemId
   const [points, setPoints] = useState<any[]>([])
 
   useEffect(() => {
-    // Cargar patrones (Filtramos por los que sean de Temperatura si tuvieras esa distinción)
-    async function loadPatterns() {
-        const { data } = await supabase.from('patterns').select('*').eq('estatus', 'Activo')
-        setPatterns(data || [])
-    }
-    loadPatterns()
-    
     // Generar 3 puntos por defecto (Min, Medio, Max)
     generatePoints(0, 200)
   }, [])
@@ -73,8 +64,7 @@ export default function TemperatureCalibrationForm({ itemId, orderId }: { itemId
   }
 
   const handleSave = async () => {
-      if (!env.patron_id) return alert("Selecciona el patrón utilizado")
-      
+            
       setLoading(true)
       try {
           const { error: resError } = await supabase.from('calibration_results').insert({
@@ -84,8 +74,7 @@ export default function TemperatureCalibrationForm({ itemId, orderId }: { itemId
               humedad_inicial: env.humedad_inicial,
               humedad_final: env.humedad_final,
               presion_atmosferica: env.presion_atmosferica,
-              patron_id: Number(env.patron_id),
-              // Guardamos la estructura específica de TEMPERATURA
+                            // Guardamos la estructura específica de TEMPERATURA
               datos_calibracion: {
                   tipo: 'TEMPERATURA', // Etiqueta para saber cómo renderizar el PDF después
                   specs,
@@ -178,11 +167,10 @@ export default function TemperatureCalibrationForm({ itemId, orderId }: { itemId
                 </div>
 
                 <div className="col-span-2">
-                     <label className="block text-[9px] font-bold text-slate-400 uppercase">Patrón</label>
-                     <select className="w-full bg-white border border-orange-300 rounded p-1 text-xs outline-none" value={env.patron_id} onChange={(e) => setEnv({...env, patron_id: e.target.value})}>
-                        <option value="">-- Seleccionar --</option>
-                        {patterns.map(p => <option key={p.id} value={p.id}>{p.clave} - {p.marca}</option>)}
-                     </select>
+                     <label className="block text-[10px] font-bold text-slate-400 uppercase">Magnitud</label>
+                     <div className="w-full bg-slate-100 text-slate-600 border border-slate-300 rounded p-1.5 font-bold text-[10px] uppercase">
+                         {magnitud}
+                     </div>
                 </div>
             </div>
 

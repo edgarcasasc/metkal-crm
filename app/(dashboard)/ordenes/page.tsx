@@ -25,8 +25,12 @@ export default function OrdersPage() {
 
         if (error) throw error;
         setOrders(data || []);
-      } catch (error) {
-        console.error("Error al cargar órdenes:", error);
+      } catch (error: any) {
+        if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+            console.warn("Fetch abortado por navegación en órdenes");
+        } else {
+            console.warn("Aviso al cargar órdenes:", error);
+        }
       } finally {
         setLoading(false);
       }

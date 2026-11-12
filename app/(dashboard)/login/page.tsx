@@ -54,28 +54,30 @@ export default function LoginPage() {
       if (authError) throw authError
 
       // 2. Verificar el rol en la tabla 'profiles'
-      // Usamos 'role' porque así lo definimos en la migración reciente
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role') 
         .eq('email', email)
-        .single()
+        .maybeSingle()
 
       if (profileError) {
-        console.error("Error obteniendo perfil:", profileError)
-        // Si hay error en perfil pero login exitoso, mandamos al home por seguridad
-        router.refresh()
-        router.push('/')
-        return
+        console.warn("Aviso obteniendo perfil:", profileError)
       }
 
-      // 3. Redirección inteligente basada en Rol
-      router.refresh() // Actualiza caché de rutas
+      // Guardar de inmediato en localStorage para que el menú lateral despierte con los permisos correctos
+      const finalRole = profile?.role || 'Asesor'
       
-      if (profile?.role === 'Metrólogo') {
-        router.push('/metrologia')
+      if (typeof window !== 'undefined') {
+          localStorage.setItem('metkal_email', email)
+          localStorage.setItem('metkal_role', finalRole)
+      }
+
+      // 3. Redirección DURA (window.location.href) en lugar de router.push()
+      // Esto evita los AbortError de navegación y fuerza a toda la pantalla a reconstruirse con tus nuevos permisos
+      if (finalRole === 'Metrólogo') {
+        window.location.href = '/metrologia'
       } else {
-        router.push('/') // Admin, Master y Asesor van al Dashboard
+        window.location.href = '/' 
       }
 
     } catch (err: any) {

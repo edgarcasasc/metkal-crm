@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Save, Plus, Trash2, Loader2, FileText, Sun } from 'lucide-react'
-
 function calculateMean(arr: number[]) {
     if (!arr || arr.length === 0) return 0;
     const sum = arr.reduce((a, b) => a + b, 0);
@@ -36,7 +35,6 @@ interface OpticsParameter {
 export default function OpticsCalibrationForm({ itemId, orderId, magnitud }: { itemId: number, orderId?: string, magnitud: string }) {
     const supabase = createClient()
     const [loading, setLoading] = useState(false)
-    const [patterns, setPatterns] = useState<any[]>([])
     
     // Entorno
     const [env, setEnv] = useState({
@@ -78,13 +76,7 @@ export default function OpticsCalibrationForm({ itemId, orderId, magnitud }: { i
     // Anexo II
     const [anexo, setAnexo] = useState("")
 
-    useEffect(() => {
-        async function loadPatterns() {
-            const { data } = await supabase.from('patterns').select('*').eq('estatus', 'Activo')
-            setPatterns(data || [])
-        }
-        loadPatterns()
-    }, [])
+
 
     const updateConfig = (field: string, value: any) => {
         const newConfig = { ...config, [field]: value }
@@ -155,8 +147,7 @@ export default function OpticsCalibrationForm({ itemId, orderId, magnitud }: { i
     }
 
     const handleSave = async () => {
-        if (!env.patron_id) return alert("Selecciona el patrón utilizado")
-        
+                
         setLoading(true)
         try {
             const { error: resError } = await supabase.from('calibration_results').insert({
@@ -165,8 +156,7 @@ export default function OpticsCalibrationForm({ itemId, orderId, magnitud }: { i
                 temp_final: env.temp_final,
                 humedad_inicial: env.humedad_inicial,
                 humedad_final: env.humedad_final,
-                patron_id: Number(env.patron_id),
-                observaciones: anexo,
+                                observaciones: anexo,
                 datos_calibracion: {
                     tipo: magnitud.toUpperCase(), // FRECUENCIA u OPTICA
                     configuracion: config,
@@ -205,11 +195,10 @@ export default function OpticsCalibrationForm({ itemId, orderId, magnitud }: { i
             <div className="p-4 space-y-8">
                 {/* AMBIENTE */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Patrón Utilizado</label>
-                         <select className="w-full bg-white border border-slate-300 rounded p-1.5 outline-none font-bold" value={env.patron_id} onChange={(e) => setEnv({...env, patron_id: e.target.value})}>
-                            <option value="">-- Seleccionar --</option>
-                            {patterns.map(p => <option key={p.id} value={p.id}>{p.clave} - {p.marca}</option>)}
-                         </select>
+                    <div><label className="block text-[10px] font-bold text-slate-400 uppercase">Magnitud</label>
+                     <div className="w-full bg-slate-100 text-slate-600 border border-slate-300 rounded p-1.5 font-bold text-[10px] uppercase">
+                         {magnitud}
+                     </div>
                     </div>
                     <div><span className="font-bold block text-[10px] uppercase text-slate-400">Temp Inicial / Final (°C)</span>
                         <div className="flex gap-2 mt-1">

@@ -42,9 +42,14 @@ export async function middleware(request: NextRequest) {
   const isLoginPage = url.pathname === '/login'
   const isAuthRoute = url.pathname.startsWith('/auth')
   const isPublicAsset = url.pathname.includes('.') // Detecta archivos como logo.png, style.css
+  // Rutas públicas accesibles sin autenticación (para escaneo de QR en equipos/etiquetas y certificados)
+  const isPublicRoute = 
+    url.pathname.startsWith('/certificados') || 
+    url.pathname.startsWith('/resultados') || 
+    url.pathname.startsWith('/etiquetas')
 
   // CASO A: No logueado y trata de entrar a ruta protegida
-  if (!user && !isLoginPage && !isAuthRoute && !isPublicAsset) {
+  if (!user && !isLoginPage && !isAuthRoute && !isPublicRoute && !isPublicAsset) {
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }

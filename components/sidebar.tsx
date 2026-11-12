@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn, withTimeout } from "@/lib/utils" 
 import { 
   LayoutDashboard, Users, FileText, Ruler, 
-  ClipboardCheck, LogOut, Shield, Loader2, Gauge 
+  ClipboardCheck, LogOut, Shield, Loader2, Gauge, ListFilter
 } from "lucide-react"
 import { logout } from '@/app/(dashboard)/login/actions'
 
@@ -24,6 +24,14 @@ export default function Sidebar() {
   const isIntentionalLogout = useRef(false)
 
   useEffect(() => {
+    // 0. Cargar desde localStorage ANTES de checar la red (evita Hydration Error)
+    if (typeof window !== 'undefined') {
+        const cachedRole = localStorage.getItem('metkal_role')
+        const cachedEmail = localStorage.getItem('metkal_email')
+        if (cachedRole) setRole(cachedRole)
+        if (cachedEmail) setUserEmail(cachedEmail)
+    }
+
     // 1. Chequeo inicial al cargar
     checkUser()
 
@@ -38,6 +46,10 @@ export default function Sidebar() {
             } else {
                 setRole(null)
                 setUserEmail(null)
+                if (typeof window !== 'undefined') {
+                    localStorage.removeItem('metkal_role')
+                    localStorage.removeItem('metkal_email')
+                }
             }
         }
     })
@@ -49,27 +61,32 @@ export default function Sidebar() {
 
   async function checkUser() {
     try {
-        const { data: { user } } = await withTimeout(supabase.auth.getUser(), 8000)
+        const { data: { session } } = await supabase.auth.getSession()
+        const user = session?.user
         
         if (user && user.email) {
            setUserEmail(user.email)
+           if (typeof window !== 'undefined') localStorage.setItem('metkal_email', user.email)
            
-           // Consultar perfil para el rol
+           // Consultar perfil para el resto de usuarios
            const { data: profile } = await withTimeout(
              supabase
                .from('profiles')
                .select('role') 
                .eq('email', user.email)
                .maybeSingle(), 
-             5000
+             30000 
            )
            
-           // Si no tiene perfil, asumimos Asesor o lo que definas por defecto
-           setRole(profile?.role || 'Asesor')
+           const fetchedRole = profile?.role || 'Asesor'
+           setRole(fetchedRole)
+           if (typeof window !== 'undefined') localStorage.setItem('metkal_role', fetchedRole)
+        } else if (!role) {
+            setRole('Asesor')
         }
     } catch (error) {
-        console.error("Error verificando sesión (Timeout o Fallo):", error)
-        // Eliminado window.location.reload() por causar bucle infinito
+        console.warn("Aviso: Error verificando sesión en fondo:", error)
+        if (!role) setRole('Asesor')
     } finally {
         setLoading(false)
     }
@@ -77,19 +94,22 @@ export default function Sidebar() {
 
   const handleLogout = async (expired: boolean = false, skipSignOut: boolean = false) => {
     isIntentionalLogout.current = true
-    // 1. Limpiamos interfaz (esto previene el bucle infinito del listener)
+    // 1. Limpiamos interfaz
     setRole(null)
     setUserEmail(null)
+    if (typeof window !== 'undefined') {
+        localStorage.removeItem('metkal_role')
+        localStorage.removeItem('metkal_email')
+    }
     
-    // 2. Llamamos servidor para destruir HTTP Only cookies y token en base de datos
+    // 2. Llamamos servidor
     await logout()
     
-    // 3. Purgar caché del lado del cliente remanente
+    // 3. Purgar caché
     if (!skipSignOut) {
         await supabase.auth.signOut()
     }
     
-    // 4. Limpiar caché completa del Router de NextJS con redirección dura
     window.location.href = expired ? '/login?expired=true' : '/login'
   }
 
@@ -116,6 +136,13 @@ export default function Sidebar() {
       roles: ['Admin', 'Gerente', 'Asesor', 'Metrólogo']
     },
     {
+      title: "Magnitudes",
+      href: "/magnitudes",
+      icon: ListFilter,
+      color: "text-amber-500",
+      roles: ['Admin', 'Gerente', 'Metrólogo']
+    },
+    {
       title: "Panel Metrólogo",
       href: "/metrologia",
       icon: Ruler,
@@ -138,9 +165,7 @@ export default function Sidebar() {
     },
   ]
 
-  // Si está cargando, no mostramos nada o un esqueleto básico
-  // Si no hay rol (no logueado), no mostramos el menú para evitar parpadeos
-  const visibleMenu = role ? allMenuItems.filter(item => item.roles.includes(role)) : []
+  const safeRole = role || 'Asesor'
 
   return (
     <div className="space-y-4 py-4 flex flex-col min-h-screen bg-slate-900 text-white">
@@ -151,11 +176,26 @@ export default function Sidebar() {
           </h1>
         </Link>
         
-        {loading ? (
-           <div className="px-4 text-slate-500 text-xs flex gap-2 animate-pulse"><Loader2 className="animate-spin" size={14}/> Conectando...</div>
-        ) : (
-          <div className="space-y-1">
-            {visibleMenu.map((route) => (
+        <div className="space-y-1">
+          {allMenuItems.map((route) => {
+            const hasAccess = route.roles.includes(safeRole)
+            
+            if (!hasAccess) {
+              return (
+                <div
+                  key={route.href}
+                  title="No tienes permisos para acceder a este módulo"
+                  className="text-sm group flex p-3 w-full justify-start font-medium cursor-not-allowed opacity-40 text-slate-500 grayscale rounded-lg"
+                >
+                  <div className="flex items-center flex-1">
+                    <route.icon className="h-5 w-5 mr-3 text-slate-500" />
+                    {route.title}
+                  </div>
+                </div>
+              )
+            }
+
+            return (
               <Link
                 key={route.href}
                 href={route.href}
@@ -169,9 +209,9 @@ export default function Sidebar() {
                   {route.title}
                 </div>
               </Link>
-            ))}
-          </div>
-        )}
+            )
+          })}
+        </div>
 
         <div className="mt-auto pt-8 border-t border-slate-800">
              {role && (

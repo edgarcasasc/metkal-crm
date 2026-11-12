@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, Loader2, Download } from 'lucide-react'
+import { Printer, Loader2, Download, ExternalLink } from 'lucide-react'
 import QRCode from "react-qr-code"
 import { toPng } from 'html-to-image'
 
@@ -14,10 +14,9 @@ export default function LabelPage() {
   const [loading, setLoading] = useState(true)
   const labelRef = useRef<HTMLDivElement>(null)
 
-  // URL para el QR (En producción será tu dominio real, ahora es localhost)
-  const qrUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/certificados/${id}` 
-    : ''
+  // URL para el QR que apunta al informe/PDF de resultados del equipo calibrado
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  const qrUrl = id ? `${baseUrl}/resultados/${id}` : ''
 
   useEffect(() => {
     fetchData()
@@ -28,7 +27,7 @@ export default function LabelPage() {
       const { data: item } = await supabase.from('service_order_items').select('*').eq('id', id).single()
       if (!item) throw new Error("Item no encontrado")
 
-      const { data: result } = await supabase.from('calibration_results').select('fecha_calibracion').eq('item_id', id).order('id', { ascending: false }).limit(1).single()
+      const { data: result } = await supabase.from('calibration_results').select('fecha_calibracion').eq('item_id', id).order('id', { ascending: false }).limit(1).maybeSingle()
       
       // Parsear número de orden para el certificado
       const { data: order } = await supabase.from('service_orders').select('folio').eq('id', item.orden_id).single()
@@ -106,13 +105,21 @@ export default function LabelPage() {
         }
       `}</style>
 
-      <div className="no-print mb-8 flex gap-4">
+      <div className="no-print mb-8 flex flex-wrap gap-4 items-center justify-center">
         <button onClick={() => window.print()} className="bg-indigo-600 text-white px-6 py-2 rounded-full font-bold uppercase text-xs flex items-center gap-2 shadow-xl hover:bg-indigo-700 transition">
             <Printer size={16}/> Imprimir PDF / Térmica
         </button>
         <button onClick={handleDownloadImage} className="bg-emerald-600 text-white px-6 py-2 rounded-full font-bold uppercase text-xs flex items-center gap-2 shadow-xl hover:bg-emerald-700 transition">
             <Download size={16}/> Descargar PNG
         </button>
+        <a 
+          href={`/resultados/${id}`} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="bg-slate-800 text-white px-6 py-2 rounded-full font-bold uppercase text-xs flex items-center gap-2 shadow-xl hover:bg-slate-900 transition"
+        >
+            <ExternalLink size={16}/> Ver PDF de Resultados
+        </a>
       </div>
 
       {/* ETIQUETA PREMIUM 10x5 cm aprox */}
@@ -179,7 +186,7 @@ export default function LabelPage() {
             </div>
             <div className="mt-2 text-center">
                 <span className="block text-white text-[7px] font-bold tracking-widest leading-tight">ESCANEAR</span>
-                <span className="block text-slate-400 text-[5px] font-bold tracking-widest">PARA VERIFICAR</span>
+                <span className="block text-slate-400 text-[5px] font-bold tracking-widest">PARA RESULTADOS</span>
             </div>
             
             {/* Pequeño detalle de diseño */}
