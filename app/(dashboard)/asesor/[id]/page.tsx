@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { withTimeout } from '@/lib/utils'
 import { 
   ArrowLeft, MapPin, User, FileText, ChevronDown, 
   History, Plus, Edit, Trash2, Copy, Eye, 
@@ -17,7 +18,7 @@ import { AddQuoteModal } from '@/components/AddQuoteModal'
 export default function ClientDetailPage() {
   const { id } = useParams()
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
 
   const [client, setClient] = useState<any>(null)
   const [contacts, setContacts] = useState<any[]>([])
@@ -37,11 +38,18 @@ export default function ClientDetailPage() {
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false)
 
   useEffect(() => { 
-    if (id) fetchData() 
+    if (id) {
+      fetchData() 
+    } else {
+      setLoading(false)
+    }
   }, [id])
 
   async function fetchData() {
-    if (!id) return; 
+    if (!id) {
+      setLoading(false);
+      return; 
+    }
     const clientIdNum = Number(id);
 
     if (isNaN(clientIdNum)) {
@@ -52,46 +60,41 @@ export default function ClientDetailPage() {
 
     try {
         setLoading(true);
+        setErrorMsg(null);
 
-        // 1. Cliente
-        const { data: clientData, error: clientError } = await supabase.from('clients').select('*').eq('id', clientIdNum).single()
-        if (clientError) throw new Error("No se encontró el cliente o hubo un error de conexión.")
+        await withTimeout((async () => {
+            // Consultas en paralelo para máxima velocidad
+            const [clientRes, contactsRes, calibRes, quotesRes] = await Promise.all([
+                supabase.from('clients').select('*').eq('id', clientIdNum).single(),
+                supabase.from('contacts').select('*').eq('client_id', clientIdNum).order('id', { ascending: true }),
+                supabase.from('calibraciones').select('*').eq('cliente_id', clientIdNum).order('id', { ascending: false }),
+                supabase.from('quotes').select('*').eq('client_id', clientIdNum).order('id', { ascending: false })
+            ]);
 
-        // 2. Contactos
-        const { data: contactsData } = await supabase.from('contacts').select('*').eq('client_id', clientIdNum).order('id', { ascending: true })
-        
-        // 3. Calibraciones
-        const { data: calibData } = await supabase.from('calibraciones').select('*').eq('cliente_id', clientIdNum).order('id', { ascending: false });
+            if (clientRes.error) throw new Error("No se encontró el cliente o hubo un error de conexión.");
+            if (quotesRes.error) throw new Error(quotesRes.error.message);
 
-        setClient(clientData);
-        setContacts(contactsData || []);
-        setCalibrations(calibData || []);
+            setClient(clientRes.data);
+            setContacts(contactsRes.data || []);
+            setCalibrations(calibRes.data || []);
 
-        // 4. Cotizaciones
-        const { data: quotesRaw, error: quotesError } = await supabase
-            .from('quotes')
-            .select('*')
-            .eq('client_id', clientIdNum)
-            .order('id', { ascending: false });
-
-        if (quotesError) throw new Error(quotesError.message);
-
-        let quotesWithItems: any[] = [];
-        if (quotesRaw && quotesRaw.length > 0) {
-            const quoteIds = quotesRaw.map(q => q.id);
-            const { data: itemsRaw } = await supabase.from('quote_items').select('*').in('cotizacion_id', quoteIds);
-            
-            quotesWithItems = quotesRaw.map(q => ({
-                ...q,
-                items: itemsRaw?.filter(i => i.cotizacion_id === q.id) || []
-            }));
-        }
-        setQuotes(quotesWithItems);
-        setErrorMsg(null); 
+            const quotesRaw = quotesRes.data || [];
+            let quotesWithItems: any[] = [];
+            if (quotesRaw.length > 0) {
+                const quoteIds = quotesRaw.map(q => q.id);
+                const { data: itemsRaw } = await supabase.from('quote_items').select('*').in('cotizacion_id', quoteIds);
+                
+                quotesWithItems = quotesRaw.map(q => ({
+                    ...q,
+                    items: itemsRaw?.filter(i => i.cotizacion_id === q.id) || []
+                }));
+            }
+            setQuotes(quotesWithItems);
+        })(), 12000);
 
     } catch (error: any) {
         console.error("Error fetching data:", error); 
-        setErrorMsg(error.message); 
+        setErrorMsg(error.message || "Error al cargar expediente."); 
     } finally {
         setLoading(false);
     }

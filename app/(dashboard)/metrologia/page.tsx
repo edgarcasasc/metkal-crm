@@ -34,7 +34,7 @@ export default function MetrologyTable() {
         .from('service_orders')
         .select(`*, clients ( id, empresa )`)
         .eq('tipo_orden', 'Laboratorio')
-        .order('fecha_programada', { ascending: true })
+        .order('id', { ascending: false })
 
       // FILTRO SEGÚN PESTAÑA
       if (view === 'active') {

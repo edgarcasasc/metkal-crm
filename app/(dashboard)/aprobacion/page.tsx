@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { withTimeout } from '@/lib/utils'
 import { 
   Eye, CheckCircle, XCircle, Loader2, Search, 
   FileText, Calendar, User, UserCheck
@@ -10,7 +11,7 @@ import {
 
 export default function ApprovalPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
 
   // Datos
   const [quotes, setQuotes] = useState<any[]>([])
@@ -34,14 +35,17 @@ export default function ApprovalPage() {
   async function fetchPendingQuotes() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('quotes')
-        .select(`
-            *,
-            clients ( empresa )
-        `)
-        .eq('estatus', 'En Revisión')
-        .order('fecha', { ascending: false })
+      const { data, error } = await withTimeout(
+        supabase
+          .from('quotes')
+          .select(`
+              *,
+              clients ( empresa )
+          `)
+          .eq('estatus', 'En Revisión')
+          .order('fecha', { ascending: false }),
+        12000
+      )
 
       if (error) throw error
       setQuotes(data || [])
@@ -53,16 +57,112 @@ export default function ApprovalPage() {
   }
 
   const handleAction = async (quoteId: number, action: 'Aprobar' | 'Rechazar') => {
-      const newStatus = action === 'Aprobar' ? 'Aprobada' : 'Borrador'
       const confirmMsg = action === 'Aprobar' 
-        ? "¿Confirmar APROBACIÓN? Se generará la orden." 
+        ? "¿Confirmar APROBACIÓN? Se generará la orden para Metrología." 
         : "¿RECHAZAR cotización? Volverá a borrador."
 
       if (!confirm(confirmMsg)) return
 
       setProcessingId(quoteId)
       try {
-          const { error } = await supabase.from('quotes').update({ estatus: newStatus }).eq('id', quoteId)
+          if (action === 'Rechazar') {
+              const { error } = await supabase.from('quotes').update({ estatus: 'Borrador' }).eq('id', quoteId)
+              if (error) throw error
+              setQuotes(prev => prev.filter(q => q.id !== quoteId))
+              return
+          }
+
+          // 1. Verificar si ya existe una orden para evitar duplicados
+          const { data: existingOrder } = await supabase
+              .from('service_orders')
+              .select('id')
+              .eq('cotizacion_id', quoteId)
+              .maybeSingle()
+
+          if (!existingOrder) {
+              const quote = quotes.find(q => q.id === quoteId)
+              if (!quote) throw new Error("No se encontró la información de la cotización.")
+
+              const { data: quoteItems, error: itemsError } = await supabase
+                  .from('quote_items')
+                  .select('*')
+                  .eq('cotizacion_id', quoteId)
+
+              if (itemsError) throw itemsError
+              if (!quoteItems || quoteItems.length === 0) {
+                  throw new Error("La cotización no tiene productos para generar la orden.")
+              }
+
+              // 2. Generar folio único de orden del año en curso (OS-MK-YY/XXXX)
+              const year = new Date().getFullYear().toString().slice(-2)
+              const { data: lastOrder } = await supabase
+                  .from('service_orders')
+                  .select('folio')
+                  .ilike('folio', `OS-MK-${year}/%`)
+                  .order('folio', { ascending: false })
+                  .limit(1)
+                  .maybeSingle()
+
+              const lastNum = lastOrder?.folio ? parseInt(lastOrder.folio.split('/')[1] || '0', 10) : 0
+              const nextNum = (isNaN(lastNum) ? 0 : lastNum) + 1
+              const folioOrden = `OS-MK-${year}/${nextNum.toString().padStart(4, '0')}`
+
+              // 3. Crear la Orden de Servicio
+              const { data: orderData, error: orderError } = await supabase
+                  .from('service_orders')
+                  .insert({
+                      cotizacion_id: quoteId,
+                      client_id: quote.client_id,
+                      contact_id: quote.contact_id,
+                      folio: folioOrden,
+                      fecha_programada: new Date().toISOString(),
+                      estatus: 'En Proceso',
+                      tipo_orden: 'Laboratorio',
+                      metrologo: null
+                  })
+                  .select()
+                  .single()
+
+              if (orderError) throw orderError
+
+              // 4. Insertar partidas con detección de magnitud
+              const orderItems = quoteItems.map((item: any) => {
+                  let magnitudDetectada = item.categoria || 'Generica'
+                  const nombre = (item.equipo || '').toLowerCase()
+                  if (nombre.includes('vernier') || nombre.includes('caliper') || nombre.includes('pie de rey') || nombre.includes('micrometro') || nombre.includes('indicador')) {
+                      magnitudDetectada = 'Dimensional'
+                  } else if (nombre.includes('manometro') || nombre.includes('presion') || nombre.includes('vacuo')) {
+                      magnitudDetectada = 'Presion'
+                  } else if (nombre.includes('termometro') || nombre.includes('temperatura') || nombre.includes('pirometro')) {
+                      magnitudDetectada = 'Temperatura'
+                  }
+
+                  return {
+                      orden_id: orderData.id,
+                      equipo: item.equipo,
+                      marca: item.marca,
+                      modelo: item.modelo,
+                      no_serie: item.no_serie,
+                      identificacion: item.identificacion,
+                      servicio: item.servicio,
+                      magnitud: magnitudDetectada,
+                      estatus_tecnico: 'Pendiente'
+                  }
+              })
+
+              const { error: insertItemsError } = await supabase
+                  .from('service_order_items')
+                  .insert(orderItems)
+
+              if (insertItemsError) throw insertItemsError
+          }
+
+          // 5. Actualizar estatus de la cotización
+          const { error } = await supabase
+              .from('quotes')
+              .update({ estatus: 'Orden Generada' })
+              .eq('id', quoteId)
+
           if (error) throw error
           
           setQuotes(prev => prev.filter(q => q.id !== quoteId))

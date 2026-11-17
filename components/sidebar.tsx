@@ -35,10 +35,14 @@ export default function Sidebar() {
     // 1. Chequeo inicial al cargar
     checkUser()
 
-    // 2. SUSCRIPCIÓN EN TIEMPO REAL
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // 2. SUSCRIPCIÓN EN TIEMPO REAL (sin await directo para evitar deadlock de navigator.locks)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            await checkUser() // Volver a consultar el rol
+            if (session?.user) {
+                setTimeout(() => {
+                    syncProfile(session.user)
+                }, 0)
+            }
         } else if (event === 'SIGNED_OUT') {
             if (!isIntentionalLogout.current) {
                 // La sesión expiró espontáneamente
@@ -59,23 +63,19 @@ export default function Sidebar() {
     }
   }, [])
 
-  async function checkUser() {
+  async function syncProfile(user: any) {
     try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const user = session?.user
-        
         if (user && user.email) {
            setUserEmail(user.email)
            if (typeof window !== 'undefined') localStorage.setItem('metkal_email', user.email)
            
-           // Consultar perfil para el resto de usuarios
            const { data: profile } = await withTimeout(
              supabase
                .from('profiles')
                .select('role') 
                .eq('email', user.email)
                .maybeSingle(), 
-             30000 
+             8000 
            )
            
            const fetchedRole = profile?.role || 'Asesor'
@@ -85,9 +85,20 @@ export default function Sidebar() {
             setRole('Asesor')
         }
     } catch (error) {
-        console.warn("Aviso: Error verificando sesión en fondo:", error)
+        console.warn("Aviso: Error verificando perfil en fondo:", error)
         if (!role) setRole('Asesor')
     } finally {
+        setLoading(false)
+    }
+  }
+
+  async function checkUser() {
+    try {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 8000)
+        await syncProfile(session?.user)
+    } catch (error) {
+        console.warn("Aviso: Error verificando sesión en fondo:", error)
+        if (!role) setRole('Asesor')
         setLoading(false)
     }
   }

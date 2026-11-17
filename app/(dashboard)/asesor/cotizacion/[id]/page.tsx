@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { withTimeout } from '@/lib/utils'
 import { 
     Printer, ArrowLeft, Loader2, Package, Save, Trash2, AlertCircle, 
     Send, CheckCircle, Lock, PlayCircle 
@@ -13,7 +14,7 @@ import { AddProductModal } from '@/components/AddProductModal'
 export default function QuotePrintPage() {
   const { id } = useParams()
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
 
   const [data, setData] = useState<any>(null)
   const [items, setItems] = useState<any[]>([]) 
@@ -28,40 +29,32 @@ export default function QuotePrintPage() {
   useEffect(() => { fetchQuoteData() }, [id])
 
   async function fetchQuoteData() {
-      if (!id) return
+      if (!id) {
+        setLoading(false)
+        return
+      }
+      setLoading(true)
+      setErrorMsg(null)
       try {
-        const { data: quote, error: quoteError } = await supabase.from('quotes').select('*').eq('id', id).single()
-        if (quoteError) throw quoteError
-        
-        const { data: client } = await supabase.from('clients').select('*').eq('id', quote.client_id).single()
-        
-        let contact = null
-        if (quote.contact_id) {
-            const { data: cData } = await supabase.from('contacts').select('*').eq('id', quote.contact_id).single()
-            contact = cData
-        }
-        setData({ ...quote, client, contact })
+        await withTimeout((async () => {
+          const { data: quote, error: quoteError } = await supabase.from('quotes').select('*').eq('id', id).single()
+          if (quoteError) throw quoteError
+          
+          const [clientRes, contactRes, itemsRes, orderRes] = await Promise.all([
+            quote.client_id ? supabase.from('clients').select('*').eq('id', quote.client_id).maybeSingle() : Promise.resolve({ data: null }),
+            quote.contact_id ? supabase.from('contacts').select('*').eq('id', quote.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+            supabase.from('quote_items').select('*').eq('cotizacion_id', quote.id).order('id', { ascending: true }),
+            supabase.from('service_orders').select('id').eq('cotizacion_id', quote.id).maybeSingle()
+          ])
 
-        // Cargar Items
-        const { data: qItems, error: itemsError } = await supabase
-            .from('quote_items')
-            .select('*')
-            .eq('cotizacion_id', quote.id)
-            .order('id', { ascending: true })
-        
-        if (itemsError) throw itemsError
-        setItems(qItems || [])
+          if (itemsRes.error) throw itemsRes.error
 
-        // VERIFICAR SI YA EXISTE ORDEN (Para no duplicar)
-        const { data: existingOrder } = await supabase
-            .from('service_orders')
-            .select('id')
-            .eq('cotizacion_id', quote.id)
-            .maybeSingle()
-        
-        if (existingOrder) setHasOrder(true)
+          setData({ ...quote, client: clientRes.data, contact: contactRes.data })
+          setItems(itemsRes.data || [])
+          if (orderRes.data) setHasOrder(true)
+        })(), 12000)
 
-      } catch (err: any) { setErrorMsg(err.message) } finally { setLoading(false) }
+      } catch (err: any) { setErrorMsg(err.message || "Error al cargar la cotización") } finally { setLoading(false) }
   }
 
   // --- ACCIÓN: MANDAR A METROLOGÍA (CREAR ORDEN) ---
@@ -73,8 +66,16 @@ export default function QuotePrintPage() {
       try {
           // 1. Generar Folio Único (OS-MK-YY/XXXX)
           const year = new Date().getFullYear().toString().slice(-2)
-          const { count } = await supabase.from('service_orders').select('*', { count: 'exact', head: true })
-          const nextNum = (count || 0) + 1
+          const { data: lastOrder } = await supabase
+              .from('service_orders')
+              .select('folio')
+              .ilike('folio', `OS-MK-${year}/%`)
+              .order('folio', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+          const lastNum = lastOrder?.folio ? parseInt(lastOrder.folio.split('/')[1] || '0', 10) : 0
+          const nextNum = (isNaN(lastNum) ? 0 : lastNum) + 1
           const folio = `OS-MK-${year}/${nextNum.toString().padStart(4, '0')}`
 
           // 2. Insertar Cabecera de la Orden

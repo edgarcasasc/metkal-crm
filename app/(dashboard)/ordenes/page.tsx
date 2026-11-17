@@ -2,39 +2,48 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Search, Eye, Loader2, Calendar, Hash, User } from 'lucide-react';
+import { withTimeout } from '@/lib/utils';
+import { Search, Eye, Loader2, Calendar, Hash, User, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'todas' | 'activas'>('activas');
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
-  useEffect(() => {
-    async function fetchOrders() {
-      try {
-        const { data, error } = await supabase
+  const fetchOrders = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const { data, error } = await withTimeout(
+        supabase
           .from('service_orders')
           .select('*, clients(empresa)')
-          .order('id', { ascending: false });
+          .order('id', { ascending: false }),
+        12000
+      );
 
-        if (error) throw error;
-        setOrders(data || []);
-      } catch (error: any) {
-        if (error.name === 'AbortError' || error.message?.includes('aborted')) {
-            console.warn("Fetch abortado por navegación en órdenes");
-        } else {
-            console.warn("Aviso al cargar órdenes:", error);
-        }
-      } finally {
-        setLoading(false);
+      if (error) throw error;
+      setOrders(data || []);
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+          console.warn("Fetch abortado por navegación en órdenes");
+      } else {
+          console.warn("Aviso al cargar órdenes:", error);
+          setErrorMsg(error.message || "No se pudo conectar con el servidor.");
       }
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchOrders();
   }, []);
 
@@ -61,6 +70,13 @@ export default function OrdersPage() {
   );
 
   if (loading) return <div className="flex h-screen items-center justify-center text-slate-400 font-bold uppercase gap-2"><Loader2 className="animate-spin" /> Cargando...</div>;
+
+  if (errorMsg) return (
+    <div className="flex flex-col h-screen items-center justify-center gap-4 text-slate-600 p-6">
+      <div className="flex items-center gap-2 text-red-500 font-bold"><AlertCircle size={20} /> {errorMsg}</div>
+      <button onClick={fetchOrders} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-blue-700 transition">Reintentar</button>
+    </div>
+  );
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 bg-slate-50 min-h-screen font-sans text-slate-600">
